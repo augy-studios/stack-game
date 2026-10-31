@@ -1,16 +1,24 @@
 {
     "name": "uwuStack by UwU Apps",
     "short_name": "uwuStack",
-    "description": "A simple uwustack app; view live uwustack at a glance!",
+    "description": "Stack slabs as high as you can before the water rises over the top. Race friends on the same wifi and watch every game back.",
     "icons": [{
-            "src": "RST-192.png",
+            "src": "/RST-192.png",
             "type": "image/png",
-            "sizes": "192x192"
+            "sizes": "192x192",
+            "purpose": "any"
         },
         {
-            "src": "RST-512.png",
+            "src": "/RST-512.png",
             "type": "image/png",
-            "sizes": "512x512"
+            "sizes": "512x512",
+            "purpose": "any"
+        },
+        {
+            "src": "/RST-512.png",
+            "type": "image/png",
+            "sizes": "512x512",
+            "purpose": "maskable"
         }
     ],
     "screenshots": [{
@@ -27,18 +35,17 @@
         }
     ],
     "start_url": "/",
-    "theme_color": "#cfc",
-    "background_color": "#cfc",
-    "display": "standalone",
-    "display_override": ["fullscreen", "minimal-ui", "window-controls-overlay"],
+    "theme_color": "#ccffcc",
+    "background_color": "#ccffcc",
+    "display": "fullscreen",
+    "display_override": ["fullscreen", "standalone", "minimal-ui"],
     "orientation": "any",
     "id": "uwustack",
     "dir": "ltr",
     "scope": "/",
     "lang": "en",
     "categories": [
-        "entertainment",
-        "lifestyle",
-        "utilities"
+        "games",
+        "entertainment"
     ]
 }

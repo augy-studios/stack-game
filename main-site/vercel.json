@@ -6,5 +6,30 @@
     "rewrites": [{
         "source": "/",
         "destination": "/"
+    }, {
+        "source": "/join",
+        "destination": "/"
+    }, {
+        "source": "/r/:id([A-Za-z0-9]{8})",
+        "destination": "/"
+    }],
+    "functions": {
+        "api/game/start.js": {
+            "includeFiles": "js/{seed,rules}.js"
+        },
+        "api/game/finish.js": {
+            "includeFiles": "js/{sim,rules,seed,record}.js"
+        },
+        "api/game/submit.js": {
+            "maxDuration": 30,
+            "includeFiles": "js/{sim,rules,seed,record}.js"
+        },
+        "api/replay/create.js": {
+            "includeFiles": "js/{sim,rules,seed,record}.js"
+        }
+    },
+    "headers": [{
+        "source": "/sw.js",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
     }]
 }

@@ -1,0 +1,1026 @@
+/* App layout and components. Theme tokens and primitives are in theme.css.
+   The game fills the window: the canvas is the page, and everything else
+   floats over it, glass on top of the scene. */
+
+:root[data-mode="dark"] { color-scheme: dark; }
+
+/* Fixed-meaning exceptions to theme tokens, like the footer heart: a QR
+   code is dark on light or it does not scan. */
+:root {
+  --qr-light: #ffffff;
+  --qr-dark: #121815;
+}
+
+/* Edge Tray tokens, per edge-tray-spec.md, mapped onto the theme's. */
+:root {
+  --glass-btn: 44px;
+  --edge: max(16px, calc(env(safe-area-inset-right) + 16px));
+  --edge-left: max(14px, calc(env(safe-area-inset-left) + 14px));
+  --banner-h: 0px;
+  --tray-top: max(calc(var(--banner-h) + 14px), calc(env(safe-area-inset-top) + 14px));
+  --tray-time: 0.34s;
+  --tray-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --accent-fill: var(--brand-fill);
+  --on-accent: var(--on-brand);
+  /* The strip a narrow screen keeps clear while the tray is open. */
+  --tray-room: calc(var(--glass-btn) + var(--edge) + 12px);
+  --bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+h1, h2, h3 { font-weight: normal; }
+
+:focus-visible {
+  outline: 2px solid var(--brand-ink);
+  outline-offset: 2px;
+}
+
+/* Modals animate their own .hidden (theme.css); everything else just goes. */
+.hidden:not(.modal-backdrop) { display: none !important; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- the scene ---- */
+.stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.no-webgl {
+  position: fixed;
+  inset: 40% 20px auto;
+  z-index: 5;
+  text-align: center;
+  color: var(--error);
+}
+
+/* ---- the brand line, top left ---- */
+.brand {
+  position: fixed;
+  z-index: 15;
+  top: var(--tray-top);
+  left: var(--edge-left);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow);
+  transition: top 0.2s ease;
+  cursor: default;
+}
+.brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.brand-name {
+  font-size: 1.15rem;
+  color: var(--brand-ink);
+}
+
+/* ---- the score ---- */
+.hud {
+  position: fixed;
+  z-index: 10;
+  top: var(--tray-top);
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  transition: top 0.2s ease;
+}
+.hud-cards {
+  display: flex;
+  gap: 10px;
+}
+.hud-card {
+  position: relative;
+  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 16px 6px;
+  border-radius: 16px;
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow);
+}
+.hud-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+.hud-value {
+  font-size: 1.9rem;
+  line-height: 1.05;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.hud-card.best .hud-value,
+.hud-card.best .hud-label { color: var(--brand-ink); }
+.hud-crown {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  translate: -50% 0;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  padding: 3px;
+  border-radius: 50%;
+  background: var(--brand-fill);
+  color: var(--on-brand);
+}
+.hud-crown svg { width: 100%; height: 100%; }
+.hud-card.beaten {
+  background: var(--brand-fill);
+  transition: background 0.2s ease;
+}
+.hud-card.beaten .hud-value,
+.hud-card.beaten .hud-label { color: var(--on-brand); }
+.hud-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  font-size: 0.85rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.chip:empty { display: none; }
+.chip.combo {
+  background: var(--brand-fill);
+  color: var(--on-brand);
+}
+.chip.warn {
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface-strong));
+  color: var(--warn);
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% { opacity: 0.6; }
+}
+
+/* The race, under the score. */
+.race-list {
+  list-style: none;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--surface);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--surface-border);
+}
+.race-row {
+  display: grid;
+  grid-template-columns: 1.4em 1fr 3em 4.2em;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+.race-row.me {
+  background: var(--brand-fill);
+  color: var(--on-brand);
+}
+.race-row.out { opacity: 0.6; }
+.race-rank { color: inherit; opacity: 0.8; }
+.race-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.race-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- over the scene ---- */
+.tap-hint {
+  position: fixed;
+  z-index: 10;
+  left: 50%;
+  bottom: calc(var(--bottom) + 76px);
+  translate: -50% 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  color: var(--ink);
+  font-size: 0.95rem;
+  pointer-events: none;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.countdown {
+  position: fixed;
+  z-index: 12;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 7rem;
+  color: var(--brand-ink);
+  text-shadow: 0 4px 30px color-mix(in srgb, var(--bg) 70%, transparent);
+  pointer-events: none;
+}
+
+.pause-veil {
+  position: fixed;
+  z-index: 12;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: var(--ink);
+  animation: fade-in 0.18s ease;
+}
+.pause-title { font-size: 2.2rem; color: var(--brand-ink); }
+.pause-sub { font-size: 1rem; color: var(--muted); }
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+
+.play-controls {
+  position: fixed;
+  z-index: 11;
+  left: var(--edge-left);
+  right: var(--edge);
+  bottom: var(--bottom);
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.round-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow);
+  color: var(--brand-ink);
+  transition: transform 0.15s ease;
+}
+.round-btn:hover { transform: translateY(-1px); }
+.round-btn svg { width: 26px; height: 26px; }
+
+.toast {
+  position: fixed;
+  z-index: 1100;
+  top: calc(var(--tray-top) + 64px);
+  left: 50%;
+  translate: -50% 0;
+  max-width: min(90vw, 420px);
+  padding: 9px 16px;
+  border-radius: 14px;
+  background: var(--brand-fill);
+  color: var(--on-brand);
+  box-shadow: var(--shadow);
+  text-align: center;
+  animation: fade-in 0.18s ease;
+}
+
+/* ---- sheets: the start panel, the race lobby, the result ---- */
+.sheet {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: var(--bottom);
+  translate: -50% 0;
+  width: min(460px, calc(100vw - 24px));
+  max-height: min(66dvh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  text-align: center;
+  /* Glass, but with enough of the page colour behind it that text keeps its
+     contrast over any part of the scene, light or dark. */
+  background: color-mix(in srgb, var(--bg) 66%, transparent);
+  animation: sheet-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(14px); }
+}
+.sheet-title {
+  font-size: 1.4rem;
+  color: var(--brand-ink);
+}
+.sheet-lead {
+  max-width: 30em;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* Wide screens: the sheet sits at the left, clear of the tower. */
+@media (min-width: 900px) {
+  .sheet {
+    left: var(--edge-left);
+    bottom: auto;
+    top: 50%;
+    translate: 0 -50%;
+    max-height: calc(100dvh - 2 * var(--tray-top) - 60px);
+    margin-top: 30px;
+  }
+}
+
+/* Narrow screens: the sheet spans the width and, while the tray is open,
+   keeps a strip clear for it, animating with it (edge-tray-spec.md 5.1). */
+@media (max-width: 600px) {
+  .sheet {
+    left: 10px;
+    right: 10px;
+    width: auto;
+    translate: none;
+    transition: right var(--tray-time) var(--tray-ease);
+  }
+  body.tray-open .sheet { right: var(--tray-room); }
+}
+
+.field-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.field-label {
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+.field-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.field-note:empty { display: none; }
+.mode-toggle.thirds { grid-template-columns: repeat(3, 1fr); }
+.mode-toggle.quarters { grid-template-columns: repeat(4, 1fr); }
+.mode-btn { color: var(--muted-strong); }
+.mode-btn[aria-checked="true"] {
+  background: var(--brand-fill);
+  color: var(--on-brand);
+}
+
+/* Buttons. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.btn-primary {
+  background: var(--brand-fill);
+  color: var(--on-brand);
+}
+.btn-primary:hover { background: var(--brand-fill-strong); }
+.btn-quiet {
+  color: var(--ink);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+}
+.pill { border-radius: 999px; }
+.start-btn {
+  padding: 12px 30px;
+  font-size: 1.05rem;
+}
+.start-btn svg { width: 18px; height: 18px; }
+
+/* Text fields: a join code, and the leaderboard name. */
+.guess {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.field {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-strong);
+  /* 3:1 against the card, as a field's edge must be. */
+  border: 1px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  color: var(--ink);
+  font-size: 1rem;
+}
+.field::placeholder { color: var(--muted-strong); opacity: 1; }
+.code-field { letter-spacing: 0.06em; text-transform: uppercase; }
+.code-field::placeholder { letter-spacing: normal; text-transform: none; }
+.field.shake { animation: shake 0.3s ease; }
+@keyframes shake {
+  25% { transform: translateX(-6px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+}
+.guess .btn {
+  padding: 10px 16px;
+  font-size: 0.95rem;
+}
+
+.round-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.round-actions .btn { padding: 9px 16px; }
+
+/* ---- the race lobby ---- */
+.party-view {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.join {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--surface-border);
+  text-align: left;
+}
+.code-big {
+  font-size: 2.4rem;
+  letter-spacing: 0.22em;
+  color: var(--brand-ink);
+  user-select: text;
+}
+.qr svg {
+  width: 180px;
+  height: 180px;
+  display: block;
+  margin: 0 auto;
+  border-radius: 12px;
+}
+.qr .qr-bg { fill: var(--qr-light); }
+.qr .qr-fg { fill: var(--qr-dark); }
+.net-status {
+  min-height: 1.4em;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.net-status.error { color: var(--error); }
+.party-settings { color: var(--muted); }
+.seat-list {
+  list-style: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.seat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  font-size: 0.9rem;
+  color: var(--ink);
+  text-align: left;
+}
+.seat.me { border-color: var(--brand-ink); }
+.seat.out { opacity: 0.6; }
+.seat-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat-state { color: var(--muted-strong); font-size: 0.8rem; }
+.seat-score { font-variant-numeric: tabular-nums; }
+
+/* ---- the result and the replay ---- */
+.result { padding-top: 14px; gap: 10px; }
+@media (max-width: 899px) {
+  .result { max-height: min(60dvh, 640px); }
+}
+.sheet-fold {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  color: var(--ink);
+}
+.sheet-fold svg {
+  width: 16px;
+  height: 16px;
+  rotate: 90deg;
+  transition: rotate 0.18s ease;
+}
+.result.folded .sheet-fold svg { rotate: -90deg; }
+.result.folded .result-body,
+.result.folded .result-reason { display: none; }
+.result-title {
+  font-size: 1.6rem;
+  color: var(--brand-ink);
+  padding: 0 34px;
+}
+.result-title:focus { outline: none; }
+.result-reason {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.result-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.result-score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.5rem;
+  color: var(--ink);
+}
+.badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--brand-fill-strong);
+  color: var(--on-brand);
+  font-size: 0.8rem;
+}
+.breakdown {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.breakdown-row.note { grid-column: 1 / -1; justify-content: center; }
+.breakdown dt { color: var(--muted); }
+.breakdown dd { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.race-standings {
+  list-style: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.race-head {
+  padding: 4px 6px;
+  font-size: 0.9rem;
+  color: var(--brand-ink);
+}
+
+.replay {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.replay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+.replay-controls .play-btn {
+  background: var(--brand-fill);
+  color: var(--on-brand);
+}
+.replay-controls .icon-btn {
+  width: 38px;
+  height: 38px;
+}
+.speed-pick {
+  grid-template-columns: repeat(4, 1fr);
+  width: 172px;
+}
+.speed-pick .mode-btn { padding: 6px 2px; font-size: 0.8rem; }
+.scrub {
+  width: 100%;
+  accent-color: var(--brand-ink);
+}
+.replay-label {
+  min-height: 1.3em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.submit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.submit-label {
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+.submit-msg {
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  color: var(--error);
+}
+.submit-note,
+.not-scored {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--muted);
+  max-width: 30em;
+}
+.submitted {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  text-align: left;
+}
+.submitted p { color: var(--ok); font-size: 0.9rem; }
+.ok-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--ok);
+}
+.ok-icon svg { width: 100%; height: 100%; }
+
+/* ---- the Edge Tray, per edge-tray-spec.md ---- */
+.hud-right {
+  position: fixed;
+  z-index: 800; /* above the game, below the update bar and the modals */
+  top: var(--tray-top);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+  transition: top 0.2s ease;
+}
+.hud-right > * { pointer-events: auto; }
+
+.tray {
+  --tray-shift: calc(var(--glass-btn) + 8px + var(--edge));
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  transition: transform var(--tray-time) var(--tray-ease);
+}
+.tray.collapsed { transform: translateX(var(--tray-shift)); }
+
+.tray-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: var(--glass-btn);
+  padding: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-radius var(--tray-time) var(--tray-ease);
+}
+.tray-tab svg { width: 16px; height: 16px; transition: transform var(--tray-time) var(--tray-ease); }
+.tray.collapsed .tray-tab { border-radius: 12px 0 0 12px; border-right: none; }
+.tray.collapsed .tray-tab svg { transform: rotate(180deg); }
+
+.tray-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-right: var(--edge);
+  max-height: calc(100dvh - var(--tray-top) - 16px);
+}
+
+.tray-rule {
+  width: 24px;
+  height: 1px;
+  margin: 2px 0;
+  background: color-mix(in srgb, var(--ink) 25%, transparent);
+}
+
+.glass-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--glass-btn);
+  height: var(--glass-btn);
+  padding: 0;
+  border-radius: 14px;
+  background: var(--surface);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.glass-btn:hover { transform: translateY(-1px); background: var(--surface-strong); }
+.glass-btn svg { width: 22px; height: 22px; }
+.glass-btn[aria-pressed="false"] { color: var(--muted-strong); }
+
+.tray-buttons > * {
+  transition:
+    opacity calc(var(--tray-time) * 0.8) ease,
+    translate var(--tray-time) var(--tray-ease),
+    scale var(--tray-time) var(--tray-ease),
+    transform 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+  /* Only opening is staggered: the delay comes from the state being entered. */
+  transition-delay: calc(var(--i, 0) * 18ms), calc(var(--i, 0) * 18ms), calc(var(--i, 0) * 18ms), 0s, 0s, 0s;
+}
+.tray-buttons > :nth-child(2) { --i: 1; }
+.tray-buttons > :nth-child(3) { --i: 2; }
+.tray-buttons > :nth-child(4) { --i: 3; }
+.tray-buttons > :nth-child(5) { --i: 4; }
+.tray-buttons > :nth-child(6) { --i: 5; }
+.tray-buttons > :nth-child(7) { --i: 6; }
+.tray-buttons > :nth-child(8) { --i: 7; }
+.tray-buttons > :nth-child(9) { --i: 8; }
+.tray-buttons > :nth-child(10) { --i: 9; }
+.tray-buttons > :nth-child(11) { --i: 10; }
+.tray.collapsed .tray-buttons > * {
+  opacity: 0;
+  translate: 12px 0;
+  scale: 0.85;
+  transition-delay: 0s;
+}
+
+.tray-tab:focus-visible,
+.glass-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* No slide on load for a tray left collapsed (spec 6.4). */
+.tray-start-collapsed .tray { transform: translateX(var(--tray-shift)); transition: none; }
+.tray-start-collapsed .tray-buttons > * { opacity: 0; translate: 12px 0; scale: 0.85; transition: none; }
+.tray-start-collapsed .sheet, .tray-start-collapsed .hud { transition: none; }
+.tray-start-collapsed .tray-tab { border-radius: 12px 0 0 12px; border-right: none; }
+.tray-start-collapsed .tray-tab svg { transform: rotate(180deg); }
+
+/* Modals above the tray; the update bar between them. */
+.modal-backdrop { z-index: 1000; }
+
+/* Settings modal. */
+.saved-name {
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+.clear-name { align-self: flex-start; }
+
+.setting-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  font-size: 0.9rem;
+  color: var(--ink);
+  text-align: left;
+}
+.setting-toggle > span:first-child { flex: 1; }
+.switch-state {
+  font-size: 0.8rem;
+  color: var(--muted-strong);
+}
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  border: 1px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--muted-strong);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+.setting-toggle[aria-checked="true"] .switch {
+  background: var(--brand-ink);
+  border-color: var(--brand-ink);
+}
+.setting-toggle[aria-checked="true"] .switch::after {
+  background: var(--bg);
+  transform: translateX(16px);
+}
+
+/* Leaderboard modal. */
+.mode-btn.active {
+  background: var(--brand-fill);
+  color: var(--on-brand);
+}
+.board-body {
+  min-height: 120px;
+  max-height: 50vh;
+  overflow-y: auto;
+  transition: opacity 0.15s ease;
+}
+.board-body[aria-busy="true"] { opacity: 0.6; }
+.board-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.board-table th {
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: normal;
+  font-size: 0.8rem;
+  color: var(--muted-strong);
+}
+.board-table td {
+  padding: 7px 8px;
+  border-top: 1px solid var(--surface-border);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.board-table th:first-child,
+.board-table td:first-child { width: 2.5em; color: var(--muted-strong); }
+.board-empty {
+  padding: 32px 8px;
+  text-align: center;
+  color: var(--muted-strong);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.footer-heart {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  /* Fixed meaning: reads as a heart whatever the brand colour. */
+  color: #34c759;
+}
+.footer-heart svg { width: 100%; height: 100%; }
+
+/* ---- update bar, per update-bar-spec.md ----
+   The game has no page flow to push down, so the bar floats over the top,
+   full width, and publishes its height so the brand, the score and the
+   tray sit below it. */
+.update-notice {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  background: color-mix(in srgb, var(--brand-ink) 12%, var(--bg));
+  border-bottom: 1px solid var(--surface-border);
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+.update-notice-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0.5rem 1rem;
+  /* Under the notch on a phone, where the bar is the topmost thing on screen. */
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+.update-notice p { flex: 1 1 auto; min-width: 0; }
+.update-notice .btn {
+  flex: none;
+  padding: 6px 12px;
+}
+
+/* ---- narrow screens ---- */
+@media (max-width: 480px) {
+  :root {
+    --glass-btn: 40px;
+    --edge: max(10px, calc(env(safe-area-inset-right) + 10px));
+    --edge-left: max(10px, calc(env(safe-area-inset-left) + 10px));
+  }
+  .update-notice-inner { flex-wrap: wrap; }
+  .update-notice p { flex-basis: 100%; }
+  .sheet { padding: 14px; gap: 10px; }
+  .mode-toggle.quarters .mode-btn { font-size: 0.8rem; padding: 8px 4px; }
+  .code-big { font-size: 2rem; }
+  .countdown { font-size: 5.5rem; }
+}
+
+/* The score moves under the brand line where the two would meet, and keeps
+   clear of the tray while it is open. */
+@media (max-width: 720px) {
+  .hud {
+    top: calc(var(--tray-top) + 52px);
+    left: var(--edge-left);
+    translate: none;
+    align-items: flex-start;
+    transition: top 0.2s ease, padding-right var(--tray-time) var(--tray-ease);
+  }
+  .hud-cards { gap: 8px; }
+  .hud-card { min-width: 104px; padding: 6px 12px 5px; }
+  .hud-value { font-size: 1.55rem; }
+  .hud-chips { justify-content: flex-start; max-width: calc(100vw - var(--edge-left) - var(--tray-room)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-right, .tray, .tray-tab, .tray-tab svg, .tray-buttons > *, .glass-btn, .sheet, .hud {
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+  }
+  .chip.warn, .tap-hint { animation: none; }
+}
