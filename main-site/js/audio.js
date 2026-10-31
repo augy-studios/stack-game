@@ -1,6 +1,6 @@
 // Every sound in the game, made with the Web Audio API as it plays, but
-// three: a piece knocking as it falls, the splash and the water's loop
-// are recordings, sounds/*.wav, precached by sw.js so they play offline
+// four: a piece knocking as it falls, a grown layer's slide, the splash
+// and the water's loop are recordings, sounds/*.wav, precached by sw.js so they play offline
 // too. Until one has loaded, or if it cannot, a synthesised stand-in plays
 // in its place.
 //
@@ -51,6 +51,10 @@ const RECORDINGS = {
   hit: { url: "/sounds/SoccerKick.wav", from: 0.04, gain: 0.33 },
   // An average splash peaks as loud as the waves do.
   splash: { url: "/sounds/waterSplash.wav", from: 0.26, gain: 1.9 },
+  // A plate slid across a plate; its slide runs from 0.08 s to about 0.65 s.
+  // Played at GROW_RATE, a few semitones down, which stretches it to about
+  // 0.67 s: GROW_MS in js/view.js matches.
+  grow: { url: "/sounds/PlateSliding.wav", from: 0.08, gain: 0.24 },
 };
 const recorded = {};
 
@@ -63,6 +67,7 @@ const OCTAVES = 3;
 const PERFECT_GAIN = 0.21;
 
 const GROW_GAIN = 0.13;
+const GROW_RATE = 0.85;
 
 // A free-free beam's modes, as multiples of the lowest.
 const WOOD = [1, 2.756, 5.404, 8.933];
@@ -273,13 +278,17 @@ export function playPerfect(step) {
 }
 
 // A layer's side pushed out over seconds, glazed ceramic sliding over
-// glazed ceramic: a slide, not a knock. Sliding is the surfaces' tiny
+// glazed ceramic: the recording, pitched down and a little higher or lower
+// each time, or
+// until it has loaded, this stand-in. A slide, not a knock. Sliding is
+// the surfaces' tiny
 // bumps going by too fast to hear one by one, so it is noise, smooth with
 // a fine grain, as loud and as bright as the side is fast: it starts
 // quick and bright and dulls and fades as it eases to a stop. Nothing low,
 // and a lift near 3 kHz for the glassy sheen of a glaze.
-export function playGrow(seconds = 0.38) {
+export function playGrow(seconds = 0.67) {
   if (!ready()) return;
+  if (playRecorded("grow", 1, GROW_RATE * jitter(0.06))) return;
   const at = ctx.currentTime;
   const rate = ctx.sampleRate;
   const length = Math.ceil(seconds * rate);

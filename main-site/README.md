@@ -32,7 +32,7 @@ the browser and the server always agree on a game.
 | `fall.js` | Cut-off pieces tipping, knocking against wider layers and splashing, worked out once in fixed steps so they fall the same way live and in the replay. |
 | `scene.js` | The three.js world: the gradient sky, stars and clouds, the water, the island, the tower, the slab, the pieces and the perfect rings. |
 | `view.js` | Turns a game at a moment into what the scene draws and the speakers play, for the live game and the replay alike. |
-| `audio.js` | Every sound. A falling piece's knock, the splash and the water's loop are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
+| `audio.js` | Every sound. A falling piece's knock, a grown layer's slide, the splash and the water's loop are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
 | `game.js` | The game screen: the start panel, play, the result, submitting, sharing, and shared replays. |
 | `replay.js` | The instant replay's controls. |
 | `party.js` | Races on one network, on top of `net.js`. |

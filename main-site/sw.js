@@ -35,7 +35,7 @@
 //    ticket is a wrong answer, not a stale one.
 //
 // 5. three.js is vendored under /vendor/ and precached with the app's own
-//    modules, so the game draws offline. The three recordings under
+//    modules, so the game draws offline. The four recordings under
 //    /sounds/ are precached too; every other sound is synthesised.
 
 const VERSION = "uwustack-v4";
@@ -91,6 +91,7 @@ const PRECACHE = [
   "/sounds/haishui.wav",
   "/sounds/waterSplash.wav",
   "/sounds/SoccerKick.wav",
+  "/sounds/PlateSliding.wav",
 
   "/manifest.json",
   "/favicon.ico",

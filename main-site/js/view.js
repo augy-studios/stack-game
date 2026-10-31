@@ -10,8 +10,10 @@ import * as audio from "./audio.js";
 
 const PIECE_WINDOW_MS = 10000;
 const RING_MS = 650;
-// How long a layer a run of perfects grew takes to push its side out.
-const GROW_MS = 380;
+// How long a layer a run of perfects grew takes to push its side out: as
+// long as the slide in sounds/PlateSliding.wav, at the rate js/audio.js
+// plays it.
+const GROW_MS = 670;
 // After the game ends the water keeps rising this long, then stops.
 const AFTER_MS = 2500;
 
