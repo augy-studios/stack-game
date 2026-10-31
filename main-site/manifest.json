@@ -1,7 +1,7 @@
 {
     "name": "uwuStack by UwU Apps",
     "short_name": "uwuStack",
-    "description": "Stack slabs as high as you can before the water rises over the top. Race friends on the same wifi and watch every game back.",
+    "description": "Stack slabs as high as you can before the water rises over the top.",
     "icons": [{
             "src": "/RST-192.png",
             "type": "image/png",
