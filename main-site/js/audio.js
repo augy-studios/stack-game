@@ -6,14 +6,13 @@
 //
 //   drop      a slab landing with a cut: a wooden knock with the thud of
 //             its weight under it
-//   perfect   a Shepard tone, one step up the major pentatonic scale for
-//             every perfect in a row, so any two in a row are consonant.
-//             Its partials sit an octave apart under a fixed bell curve,
-//             so it keeps rising for as long as the combo lasts without
-//             ever leaving the range a speaker plays well. Kept soft: pure
-//             sines centred low, nothing much above 2 kHz, where a tone
-//             turns piercing, and a bell's long fade. A softer knock sits
-//             under it: the slab still lands
+//   perfect   the next note up the C major scale for every perfect in a
+//             row, from C3 up to C6, and C6 from then on. A soft mallet: a pure note with two quiet overtones
+//             that fade first, a long fade, and the higher notes a little
+//             quieter, since the ear hears them louder. A softer knock
+//             sits under it: the slab still lands
+//   grow      a run of perfects pushing a layer's side back out: ceramic
+//             dragged over ceramic, then a small clink as it stops
 //   hit       a cut-off piece knocking against a layer below
 //   land      a piece landing on the island: dull, the sand takes the ring
 //   splash    a piece, or a missed slab, going into the water
@@ -49,11 +48,27 @@ let sloshHeld = false;
 // moment it belongs to rather than after the file's lead-in.
 const RECORDINGS = {
   hit: { url: "/sounds/SoccerKick.wav", from: 0.04, gain: 0.33 },
-  splash: { url: "/sounds/waterSplash.wav", from: 0.26, gain: 0.45 },
+  // An average splash peaks as loud as the waves do.
+  splash: { url: "/sounds/waterSplash.wav", from: 0.26, gain: 1.9 },
 };
 const recorded = {};
 
+// The perfect's scale: C major, as semitones above C, from C3 up OCTAVES
+// octaves to C6. Loudness is set against middle C.
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const C3 = 130.81;
+const MIDDLE_C = 261.63;
+const OCTAVES = 3;
 const PERFECT_GAIN = 0.21;
+
+// A glazed face's few strong modes, a plate's: f, 3.25f and 6.5f, as
+// multiples of the lowest, with their levels.
+const CERAMIC = [
+  [1, 1],
+  [3.25, 0.5],
+  [6.5, 0.22],
+];
+const GROW_GAIN = 0.45;
 
 // A free-free beam's modes, as multiples of the lowest.
 const WOOD = [1, 2.756, 5.404, 8.933];
@@ -123,7 +138,8 @@ function loadSound(url) {
 
 // A sound gap layers below the one being built: quieter by about the
 // inverse square of the distance past the first few layers, and duller,
-// since distance takes the highs off a sound first.
+// since distance takes the highs off a sound first. The splash and the
+// waves both go by it, so a splash is always as loud as the waves there.
 function far(gap) {
   const d = Math.max(0, gap);
   return { gain: 1 / (1 + (d / 3) ** 2), cutoff: 18000 / (1 + d * 0.6) };
@@ -232,36 +248,83 @@ export function playDrop(strength = 1) {
   knock(at, 300 + Math.random() * 40, 0.32 * strength);
 }
 
-// Semitones of the major pentatonic scale.
-const PENTATONIC = [0, 2, 4, 7, 9];
-
 export function playPerfect(step) {
   if (!ready()) return;
   const at = ctx.currentTime;
-  const pos = PENTATONIC[(((step - 1) % 5) + 5) % 5] / 12;
+  const n = Math.min(Math.max(0, step - 1), MAJOR.length * OCTAVES);
+  const freq = C3 * 2 ** ((12 * Math.floor(n / MAJOR.length) + MAJOR[n % MAJOR.length]) / 12);
   const out = ctx.createGain();
-  out.gain.value = PERFECT_GAIN;
+  out.gain.value = PERFECT_GAIN * (MIDDLE_C / freq) ** 0.3;
   const soft = ctx.createBiquadFilter();
   soft.type = "lowpass";
-  soft.frequency.value = 1800;
+  soft.frequency.value = 3000;
   soft.Q.value = 0.5;
   out.connect(soft).connect(master);
-  for (let k = 0; k < 8; k++) {
-    const octave = k + pos;
-    // The fixed bell curve over octaves that makes the rise endless,
-    // centred on 440 Hz.
-    const weight = Math.exp(-((octave - 3) ** 2) / 2);
-    if (weight < 0.02) continue;
+  // The note, then its second and third harmonics, quieter and shorter.
+  [
+    [1, 0.5, 0.95],
+    [2, 0.12, 0.45],
+    [3, 0.04, 0.25],
+  ].forEach(([harmonic, level, decay]) => {
     const osc = ctx.createOscillator();
-    osc.frequency.value = 55 * 2 ** octave;
+    osc.frequency.value = freq * harmonic;
     const g = ctx.createGain();
-    envelope(g, at, weight * 0.5, 0.015, 0.95);
+    envelope(g, at, level, 0.01, decay);
     osc.connect(g).connect(out);
     osc.start(at);
-    osc.stop(at + 1.05);
-  }
+    osc.stop(at + decay + 0.05);
+  });
 
   knock(at, 330 + Math.random() * 30, 0.15);
+}
+
+// A layer's side pushed out over seconds, ceramic against ceramic. Friction
+// between two hard faces is stick-slip: they catch and let go over and
+// over, each slip a tiny knock that sets the ceramic ringing at its own
+// modes. Quick and loud while the side moves fast, slower and fainter as
+// it eases to a stop, and then a small clink as it settles.
+export function playGrow(seconds = 0.38) {
+  if (!ready()) return;
+  const at = ctx.currentTime;
+  const rate = ctx.sampleRate;
+  const length = Math.ceil(seconds * rate);
+  const judder = ctx.createBuffer(1, length, rate);
+  const d = judder.getChannelData(0);
+  let phase = 0;
+  for (let i = 0; i < length; i++) {
+    // How fast the side is moving: it eases out, fast to still.
+    const speed = (1 - i / length) ** 2;
+    phase += (40 + 160 * speed) / rate;
+    if (phase >= 1) {
+      phase -= 1 + (Math.random() - 0.5) * 0.3;
+      d[i] += speed * (0.6 + 0.4 * Math.random());
+    }
+    // The fine grit of the glaze between the slips.
+    d[i] += (Math.random() * 2 - 1) * 0.08 * speed;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = judder;
+  const out = ctx.createGain();
+  out.gain.value = GROW_GAIN;
+  const soft = ctx.createBiquadFilter();
+  soft.type = "lowpass";
+  soft.frequency.value = 6000;
+  out.connect(soft).connect(master);
+  const f0 = 820 * jitter(0.06);
+  for (const [ratio, level] of CERAMIC) {
+    const band = ctx.createBiquadFilter();
+    band.type = "bandpass";
+    band.frequency.value = f0 * ratio;
+    band.Q.value = 40;
+    const g = ctx.createGain();
+    g.gain.value = level * 6;
+    src.connect(band).connect(g).connect(out);
+  }
+  src.start(at);
+  // The clink as it comes to rest.
+  const clinkAt = at + seconds * 0.92;
+  const decays = [0.16, 0.08, 0.04];
+  CERAMIC.forEach(([ratio, level], i) => ring(clinkAt, f0 * ratio * jitter(0.01), level * 0.12, decays[i], out));
 }
 
 export function playHit(strength = 0.5) {
@@ -294,7 +357,8 @@ export function playLand(strength = 0.5) {
 // gap: how many layers below the one being built it hit the water.
 export function playSplash(strength = 0.6, gap = 0) {
   if (!ready()) return;
-  const size = 0.35 + 0.65 * strength;
+  // Even a slow piece makes a splash worth hearing.
+  const size = 0.6 + 0.4 * strength;
   const dest = distant(gap);
   // A bigger splash a little lower, and no two quite the same.
   if (playRecorded("splash", size, (1.12 - 0.22 * strength) * jitter(0.06), dest)) return;

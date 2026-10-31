@@ -10,6 +10,8 @@ import * as audio from "./audio.js";
 
 const PIECE_WINDOW_MS = 10000;
 const RING_MS = 650;
+// How long a layer a run of perfects grew takes to push its side out.
+const GROW_MS = 380;
 // After the game ends the water keeps rising this long, then stops.
 const AFTER_MS = 2500;
 
@@ -108,6 +110,14 @@ export function createPresenter() {
     const pieces = [];
     piecesAt(count, t, (fall, box, n) => pieces.push({ fall, sx: box.sx, sz: box.sz, n }));
 
+    // Layers still pushing out a side a run of perfects grew back.
+    const growing = [];
+    for (let i = count - 2; i >= 0; i--) {
+      const drop = game.drops[i];
+      if (t - drop.t >= GROW_MS) break;
+      if (drop.grew) growing.push({ t: drop.t, n: drop.n, ms: GROW_MS, ...drop.grew });
+    }
+
     const rings = [];
     for (let i = count - 2; i >= 0; i--) {
       const drop = game.drops[i];
@@ -127,6 +137,7 @@ export function createPresenter() {
       water: waterLevel,
       pieces,
       rings,
+      growing,
       top: (count - 1) * LAYER,
     };
   }
@@ -147,6 +158,7 @@ export function createPresenter() {
         } else {
           audio.playDrop(drop.auto ? 0.7 : 1);
         }
+        if (drop.grew) audio.playGrow(GROW_MS / 1000);
       }
       piecesAt(count, to, (fall) => {
         for (const hit of fall.impacts) {

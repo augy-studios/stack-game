@@ -572,13 +572,14 @@ body {
   border: 1px solid var(--surface-border);
   color: var(--ink);
 }
+/* Open, it points up, to fold the panel away; folded, down, to open it. */
 .sheet-fold svg {
   width: 16px;
   height: 16px;
-  rotate: 90deg;
+  rotate: -90deg;
   transition: rotate 0.18s ease;
 }
-.result.folded .sheet-fold svg { rotate: -90deg; }
+.result.folded .sheet-fold svg { rotate: 90deg; }
 .result.folded .result-body,
 .result.folded .result-reason { display: none; }
 .result-title {

@@ -32,6 +32,22 @@ const GRASS_TOP_Y = ISLAND_Y + 0.05;
 const RIPPLES = 4;
 const RIPPLE_MS = 2500;
 
+// The splash itself, on high quality: drops thrown up per piece, and how
+// long the crown of water stands and the drops fly, in seconds.
+const DROPS = 16;
+const CROWN_S = 0.6;
+const SPLASH_S = 1.1;
+
+// A repeatable number in [0, 1) from two integers, so a replay throws the
+// same drops.
+function hash(a, b) {
+  let x = Math.imul(a ^ Math.imul(b + 1, 0x9e3779b1), 0x85ebca6b) >>> 0;
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35) >>> 0;
+  x ^= x >>> 16;
+  return x / 4294967296;
+}
+
 // The sun the water glints with: low behind the tower, where the sky's
 // glow is, so its path runs across the water towards the camera.
 const GLINT = new THREE.Vector3(-1, 0.36, -1).normalize();
@@ -167,6 +183,28 @@ const FLOWERS = [
   ["#ffe08a", "#f0a040"],
   ["#ffb79a", "#ffe08a"],
 ];
+
+// A crown splash: a wall of water open at both ends, flaring out to a
+// ragged rim of spikes. White and solid at the rim, fading to clear at the
+// waterline, through the alpha of its vertex colours.
+function crownGeometry() {
+  const geo = new THREE.CylinderGeometry(1, 0.75, 1, 36, 1, true).translate(0, 0.5, 0);
+  const p = geo.attributes.position;
+  const colour = [];
+  for (let i = 0; i < p.count; i++) {
+    const rim = p.getY(i) > 0.5;
+    if (rim) {
+      // Spikes from the angle alone, so the seam's two copies agree.
+      const a = Math.atan2(p.getZ(i), p.getX(i));
+      const spike = Math.abs(Math.sin(a * 7)) ** 3 * (0.7 + 0.3 * Math.sin(a * 3 + 1));
+      const h = 0.45 + 0.55 * spike;
+      p.setXYZ(i, p.getX(i) * (1 + 0.3 * h), h, p.getZ(i) * (1 + 0.3 * h));
+    }
+    colour.push(1, 1, 1, rim ? 0.95 : 0.08);
+  }
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(colour, 4));
+  return geo;
+}
 
 // The sky is drawn flat across the screen behind the world, top to bottom,
 // so the whole gradient shows whichever way the camera looks, with a soft
@@ -629,6 +667,37 @@ export function createScene(canvas, { quality = "high" } = {}) {
     tower.count = want;
   }
 
+  // A layer a run of perfects grew pushes its new side out, easing to a
+  // stop, rather than appearing full size. Once done it is put back as
+  // it is.
+  const growingNow = new Set();
+  function growLayers(growing, layers, count, seedNum, t) {
+    const done = new Set(growingNow);
+    growingNow.clear();
+    for (const g of growing) {
+      const layer = layers[g.n];
+      if (!layer || g.n >= count) continue;
+      const p = THREE.MathUtils.clamp((t - g.t) / g.ms, 0, 1);
+      const missing = g.amount * (1 - p) ** 3;
+      const shown = { ...layer };
+      if (g.axis === "x") {
+        shown.sx -= missing;
+        shown.x -= (g.side * missing) / 2;
+      } else {
+        shown.sz -= missing;
+        shown.z -= (g.side * missing) / 2;
+      }
+      setLayer(g.n - 1, shown, seedNum);
+      growingNow.add(g.n);
+      done.delete(g.n);
+    }
+    for (const n of done) if (layers[n] && n < count) setLayer(n - 1, layers[n], seedNum);
+    if (growingNow.size || done.size) {
+      tower.instanceMatrix.needsUpdate = true;
+      if (tower.instanceColor) tower.instanceColor.needsUpdate = true;
+    }
+  }
+
   /* ---- the slab, the pieces and the rings ---- */
   const slabMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const slab = new THREE.Mesh(boxGeo, slabMat);
@@ -647,6 +716,28 @@ export function createScene(canvas, { quality = "high" } = {}) {
 
   const frameGeo = frameGeometry(0.9);
   const plateGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  // Splashes: a crown of water thrown up round where a piece went in, and
+  // drops flying out of it, drawn only on high quality.
+  // Unlit, so drops read as bright water rather than grey beads.
+  const dropMat = new THREE.MeshBasicMaterial({ color: 0xeaf8ff, transparent: true, opacity: 0.9, fog: false });
+  const splashDrops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), dropMat, RIPPLES * DROPS);
+  splashDrops.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  splashDrops.frustumCulled = false;
+  splashDrops.count = 0;
+  splashDrops.renderOrder = 3;
+  scene.add(splashDrops);
+  const crownGeo = crownGeometry();
+  const crowns = Array.from({ length: RIPPLES }, () => {
+    const crown = new THREE.Mesh(
+      crownGeo,
+      new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false })
+    );
+    crown.visible = false;
+    crown.renderOrder = 3;
+    scene.add(crown);
+    return crown;
+  });
+
   const ringPool = [];
   function ringMeshes(i) {
     while (ringPool.length <= i) {
@@ -787,9 +878,11 @@ export function createScene(canvas, { quality = "high" } = {}) {
     if (n < count && layer) out.set(layer.x * S, layer.z * S, (layer.sx * S) / 2, (layer.sz * S) / 2);
   }
 
-  // The latest few places pieces went in, and how long ago, in seconds.
-  function ripples(view) {
-    const out = waterUniforms.uRipples.value;
+  // The latest few places pieces went in: where, how long ago in seconds,
+  // how hard, how big the piece, and its time in the game, which seeds
+  // its drops.
+  const hits = Array.from({ length: RIPPLES }, () => ({ x: 0, z: 0, age: 0, strength: 0, size: 0, seed: 0 }));
+  function impacts(view) {
     let used = 0;
     for (const p of view.pieces ?? []) {
       for (const hit of p.fall.impacts) {
@@ -798,14 +891,71 @@ export function createScene(canvas, { quality = "high" } = {}) {
         const age = view.t - hit.t;
         if (age < 0 || age >= RIPPLE_MS) continue;
         const at = fallAt(p.fall, hit.t, view.water);
-        if (at) out[used++].set(at.x * S, at.z * S, age / 1000, 0.4 + 0.6 * hit.strength);
+        if (!at) continue;
+        Object.assign(hits[used++], {
+          x: at.x * S,
+          z: at.z * S,
+          age: age / 1000,
+          strength: hit.strength,
+          size: Math.sqrt(p.sx * p.sz) * S,
+          seed: Math.floor(hit.t),
+        });
       }
     }
-    for (let i = used; i < RIPPLES; i++) out[i].set(0, 0, -1, 0);
+    return used;
+  }
+
+  // The rings in the water's shading, for every quality.
+  function ripples(used) {
+    const out = waterUniforms.uRipples.value;
+    for (let i = 0; i < RIPPLES; i++) {
+      const h = hits[i];
+      if (i < used) out[i].set(h.x, h.z, h.age, 0.4 + 0.6 * h.strength);
+      else out[i].set(0, 0, -1, 0);
+    }
+  }
+
+  // The crowns and the drops, on high quality only. A crown spreads and
+  // rises, then falls back; each drop flies out and up and falls back in
+  // under gravity, the bigger and harder the piece the higher.
+  function splashes(used, level) {
+    const high = drawnAs === "high";
+    let n = 0;
+    dropMat.color.copy(waterUniforms.uShallow.value).lerp(waterUniforms.uFoam.value, 0.75);
+    for (let i = 0; i < RIPPLES; i++) {
+      const h = hits[i];
+      const crown = crowns[i];
+      const on = high && i < used && h.age < SPLASH_S;
+      crown.visible = on && h.age < CROWN_S;
+      if (!on) continue;
+      const big = (0.5 + 0.5 * h.strength) * Math.min(1.4, 0.5 + h.size);
+      if (crown.visible) {
+        const k = h.age / CROWN_S;
+        const r = h.size * 0.45 + k * 0.5 * big;
+        crown.position.set(h.x, level, h.z);
+        crown.scale.set(r, 0.55 * big * Math.sin(Math.PI * Math.min(1, k * 1.3)) + 0.001, r);
+        crown.material.color.copy(waterUniforms.uFoam.value);
+        crown.material.opacity = 0.8 * (1 - k);
+      }
+      for (let j = 0; j < DROPS; j++) {
+        const up = (1.9 + 1.4 * hash(h.seed, j * 4 + 2)) * big;
+        const y = up * h.age - 4.9 * h.age * h.age;
+        if (y < -0.02) continue;
+        const a = (j / DROPS) * Math.PI * 2 + hash(h.seed, j * 4) * 0.5;
+        const out = h.size * 0.4 + (0.35 + 0.5 * hash(h.seed, j * 4 + 1)) * big * h.age;
+        tmp.position.set(h.x + Math.cos(a) * out, level + y, h.z + Math.sin(a) * out);
+        tmp.rotation.set(0, 0, 0);
+        tmp.scale.setScalar((0.022 + 0.026 * hash(h.seed, j * 4 + 3)) * big);
+        tmp.updateMatrix();
+        splashDrops.setMatrixAt(n++, tmp.matrix);
+      }
+    }
+    splashDrops.count = n;
+    splashDrops.instanceMatrix.needsUpdate = true;
   }
 
   /* ---- camera ---- */
-  const cam = { y: 0.4, dist: 8, cover: 0, ready: false };
+  const cam = { x: 0, y: 0.4, z: 0, dist: 8, cover: 0, ready: false };
   // The free camera's offsets as drawn, easing towards the ones asked for.
   const orb = { ...NO_ORBIT };
   const look3 = new THREE.Vector3();
@@ -854,6 +1004,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     const { t, seedNum, layers, count, overview = 0, cover = 0, dt = 0.016, clock = 0 } = view;
 
     syncTower(layers, count, seedNum);
+    growLayers(view.growing ?? [], layers, count, seedNum, t);
 
     const top = (count - 1) * LAYER * S;
     const h = hueOf(seedNum, count - 1);
@@ -918,7 +1069,9 @@ export function createScene(canvas, { quality = "high" } = {}) {
     waterUniforms.uLevel.value = level;
     waterUniforms.uShore.value = shoreRadius(level);
     waterline(layers, count, level, waterUniforms.uColumn.value);
-    ripples(view);
+    const hitCount = impacts(view);
+    ripples(hitCount);
+    splashes(hitCount, level);
 
     // Camera: follow the top, or pull back to show the whole tower in the
     // part of the screen no panel covers.
@@ -928,14 +1081,23 @@ export function createScene(canvas, { quality = "high" } = {}) {
     const free = 1 - Math.min(0.7, cover);
     const wantDist = (fit + (Math.max(fit, backFor) - fit) * overview) * (1 + overview * (1 / free - 1));
     const wantY = top + 0.55 - (top / 2 + 0.2) * overview;
+    // Cut after cut, the tower wanders off the middle of the island, so the
+    // camera follows the top layer's centre rather than the island's.
+    const topLayer = layers[count - 1];
+    const wantX = (topLayer?.x ?? 0) * S;
+    const wantZ = (topLayer?.z ?? 0) * S;
     if (!cam.ready) {
       cam.y = wantY;
+      cam.x = wantX;
+      cam.z = wantZ;
       cam.dist = wantDist;
       cam.cover = cover;
       cam.ready = true;
     }
     const ease = 1 - Math.exp(-dt * 4);
     cam.y += (wantY - cam.y) * ease;
+    cam.x += (wantX - cam.x) * ease;
+    cam.z += (wantZ - cam.z) * ease;
     cam.dist += (wantDist - cam.dist) * ease;
     cam.cover += (Math.min(0.7, cover) - cam.cover) * (1 - Math.exp(-dt * 6));
 
@@ -964,7 +1126,10 @@ export function createScene(canvas, { quality = "high" } = {}) {
     const round = BASE_ROUND + orb.yaw;
     look3.set(Math.cos(rise) * Math.sin(round), Math.sin(rise), Math.cos(rise) * Math.cos(round));
 
-    const target = new THREE.Vector3(0, ty, 0);
+    // Lower down the tower, nearer the base's centre: by the top's share of
+    // the height, so the whole tower in view sits in the middle too.
+    const along = top > 0 ? THREE.MathUtils.clamp(ty / top, 0, 1) : 0;
+    const target = new THREE.Vector3(cam.x * along, ty, cam.z * along);
     camera.position.copy(target).addScaledVector(look3, dist);
     camera.lookAt(target);
     if (cam.cover > 0.002) camera.setViewOffset(width, height, 0, (height * cam.cover) / 2, width, height);
