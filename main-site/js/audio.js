@@ -7,12 +7,13 @@
 //   drop      a slab landing with a cut: a wooden knock with the thud of
 //             its weight under it
 //   perfect   the next note up the C major scale for every perfect in a
-//             row, from C3 up to C6, and C6 from then on. A soft mallet: a pure note with two quiet overtones
-//             that fade first, a long fade, and the higher notes a little
-//             quieter, since the ear hears them louder. A softer knock
-//             sits under it: the slab still lands
-//   grow      a run of perfects pushing a layer's side back out: ceramic
-//             dragged over ceramic, then a small clink as it stops
+//             row, from C3 up to C6, and C6 from then on. A soft mallet:
+//             a pure note with two quiet overtones that fade first, a long
+//             fade, and the higher notes a little quieter, since the ear
+//             hears them louder. A softer knock sits under it: the slab
+//             still lands
+//   grow      a run of perfects pushing a layer's side back out: glazed
+//             ceramic sliding over glazed ceramic
 //   hit       a cut-off piece knocking against a layer below
 //   land      a piece landing on the island: dull, the sand takes the ring
 //   splash    a piece, or a missed slab, going into the water
@@ -61,14 +62,7 @@ const MIDDLE_C = 261.63;
 const OCTAVES = 3;
 const PERFECT_GAIN = 0.21;
 
-// A glazed face's few strong modes, a plate's: f, 3.25f and 6.5f, as
-// multiples of the lowest, with their levels.
-const CERAMIC = [
-  [1, 1],
-  [3.25, 0.5],
-  [6.5, 0.22],
-];
-const GROW_GAIN = 0.45;
+const GROW_GAIN = 0.13;
 
 // A free-free beam's modes, as multiples of the lowest.
 const WOOD = [1, 2.756, 5.404, 8.933];
@@ -278,53 +272,51 @@ export function playPerfect(step) {
   knock(at, 330 + Math.random() * 30, 0.15);
 }
 
-// A layer's side pushed out over seconds, ceramic against ceramic. Friction
-// between two hard faces is stick-slip: they catch and let go over and
-// over, each slip a tiny knock that sets the ceramic ringing at its own
-// modes. Quick and loud while the side moves fast, slower and fainter as
-// it eases to a stop, and then a small clink as it settles.
+// A layer's side pushed out over seconds, glazed ceramic sliding over
+// glazed ceramic: a slide, not a knock. Sliding is the surfaces' tiny
+// bumps going by too fast to hear one by one, so it is noise, smooth with
+// a fine grain, as loud and as bright as the side is fast: it starts
+// quick and bright and dulls and fades as it eases to a stop. Nothing low,
+// and a lift near 3 kHz for the glassy sheen of a glaze.
 export function playGrow(seconds = 0.38) {
   if (!ready()) return;
   const at = ctx.currentTime;
   const rate = ctx.sampleRate;
   const length = Math.ceil(seconds * rate);
-  const judder = ctx.createBuffer(1, length, rate);
-  const d = judder.getChannelData(0);
-  let phase = 0;
+  const slide = ctx.createBuffer(1, length, rate);
+  const d = slide.getChannelData(0);
+  const fadeIn = Math.round(0.015 * rate);
+  const grainEvery = Math.round(rate / 45);
+  let grain = 1;
+  let grainTo = 1;
   for (let i = 0; i < length; i++) {
     // How fast the side is moving: it eases out, fast to still.
     const speed = (1 - i / length) ** 2;
-    phase += (40 + 160 * speed) / rate;
-    if (phase >= 1) {
-      phase -= 1 + (Math.random() - 0.5) * 0.3;
-      d[i] += speed * (0.6 + 0.4 * Math.random());
-    }
-    // The fine grit of the glaze between the slips.
-    d[i] += (Math.random() * 2 - 1) * 0.08 * speed;
+    // The glaze's grain: the level wanders a little, smoothly.
+    if (i % grainEvery === 0) grainTo = 0.7 + 0.3 * Math.random();
+    grain += (grainTo - grain) * 0.002;
+    d[i] = (Math.random() * 2 - 1) * speed * grain * Math.min(1, i / fadeIn);
   }
   const src = ctx.createBufferSource();
-  src.buffer = judder;
+  src.buffer = slide;
+  const low = ctx.createBiquadFilter();
+  low.type = "highpass";
+  low.frequency.value = 1200;
+  low.Q.value = 0.7;
+  const bright = ctx.createBiquadFilter();
+  bright.type = "lowpass";
+  bright.Q.value = 0.7;
+  bright.frequency.setValueAtTime(7000, at);
+  bright.frequency.exponentialRampToValueAtTime(2200, at + seconds);
+  const sheen = ctx.createBiquadFilter();
+  sheen.type = "peaking";
+  sheen.frequency.value = 3000 * jitter(0.1);
+  sheen.Q.value = 1.5;
+  sheen.gain.value = 6;
   const out = ctx.createGain();
   out.gain.value = GROW_GAIN;
-  const soft = ctx.createBiquadFilter();
-  soft.type = "lowpass";
-  soft.frequency.value = 6000;
-  out.connect(soft).connect(master);
-  const f0 = 820 * jitter(0.06);
-  for (const [ratio, level] of CERAMIC) {
-    const band = ctx.createBiquadFilter();
-    band.type = "bandpass";
-    band.frequency.value = f0 * ratio;
-    band.Q.value = 40;
-    const g = ctx.createGain();
-    g.gain.value = level * 6;
-    src.connect(band).connect(g).connect(out);
-  }
+  src.connect(low).connect(bright).connect(sheen).connect(out).connect(master);
   src.start(at);
-  // The clink as it comes to rest.
-  const clinkAt = at + seconds * 0.92;
-  const decays = [0.16, 0.08, 0.04];
-  CERAMIC.forEach(([ratio, level], i) => ring(clinkAt, f0 * ratio * jitter(0.01), level * 0.12, decays[i], out));
 }
 
 export function playHit(strength = 0.5) {
