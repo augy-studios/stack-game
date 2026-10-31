@@ -38,7 +38,7 @@
 //    modules, so the game draws offline. The four recordings under
 //    /sounds/ are precached too; every other sound is synthesised.
 
-const VERSION = "uwustack-v4";
+const VERSION = "uwustack-v5";
 
 const SHELL = `uwustack-shell-${VERSION}`;
 
