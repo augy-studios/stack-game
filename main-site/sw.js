@@ -1,12 +1,12 @@
-const CACHE = "template-offline-v1";
+const CACHE = "uwustack-v1";
 
 const ASSETS = [
   "/",
   "/index.html",
   "/style.css",
   "/script.js",
-  "/templateicon1-192.png",
-  "/templateicon1-512.png",
+  "/RST-192.png",
+  "/RST-512.png",
   "/favicon.ico",
   "/manifest.json"
 ];
