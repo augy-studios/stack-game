@@ -10,8 +10,8 @@
 //             row, from C3 up to C6, and C6 from then on. A soft mallet:
 //             a pure note with two quiet overtones that fade first, a long
 //             fade, and the higher notes a little quieter, since the ear
-//             hears them louder. A softer knock sits under it: the slab
-//             still lands
+//             hears them louder. Just the note: the knock is only for a
+//             drop that gets cut
 //   grow      a run of perfects pushing a layer's side back out: glazed
 //             ceramic sliding over glazed ceramic
 //   hit       a cut-off piece knocking against a layer below
@@ -273,8 +273,6 @@ export function playPerfect(step) {
     osc.start(at);
     osc.stop(at + decay + 0.05);
   });
-
-  knock(at, 330 + Math.random() * 30, 0.15);
 }
 
 // A layer's side pushed out over seconds, glazed ceramic sliding over
