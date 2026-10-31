@@ -1,17 +1,38 @@
-// Every sound in the game, made with the Web Audio API as it plays. There
-// are no sound files, so there is nothing to download, cache or license,
-// and the game sounds the same offline.
+// Every sound in the game, made with the Web Audio API as it plays, but
+// three: a piece knocking as it falls, the splash and the water's loop
+// are recordings, sounds/*.wav, precached by sw.js so they play offline
+// too. Until one has loaded, or if it cannot, a synthesised stand-in plays
+// in its place.
 //
-//   drop      a slab landing with a cut: a short wooden knock
-//   perfect   a Shepard tone, one semitone higher for every perfect in a
-//             row. Its partials sit an octave apart under a fixed bell
-//             curve, so it keeps rising for as long as the combo lasts
-//             without ever leaving the range a speaker plays well
+//   drop      a slab landing with a cut: a wooden knock with the thud of
+//             its weight under it
+//   perfect   a Shepard tone, one step up the major pentatonic scale for
+//             every perfect in a row, so any two in a row are consonant.
+//             Its partials sit an octave apart under a fixed bell curve,
+//             so it keeps rising for as long as the combo lasts without
+//             ever leaving the range a speaker plays well. Kept soft: pure
+//             sines centred low, nothing much above 2 kHz, where a tone
+//             turns piercing, and a bell's long fade. A softer knock sits
+//             under it: the slab still lands
 //   hit       a cut-off piece knocking against a layer below
-//   land      a piece landing on the island
+//   land      a piece landing on the island: dull, the sand takes the ring
 //   splash    a piece, or a missed slab, going into the water
-//   slosh     the water itself, a loop that grows louder as it nears the
-//             layer being built
+//   slosh     the water itself, waves lapping on a loop
+//
+// The water's sounds come from as far below the layer being built as the
+// water is, so they are quieter and duller the further down it is, as
+// distance makes any sound: see far().
+//
+// The wood is modal synthesis: a struck block rings at a few inharmonic
+// modes, here a free-free beam's (1, 2.756, 5.404, 8.933 times the lowest),
+// each a decaying sine, the higher ones dying faster, set off by a click
+// a few milliseconds long where the two surfaces meet.
+//
+// The stand-in splash follows what is heard when a solid goes into water:
+// the slap as it hits, the hiss of the crown thrown up, the low plunk of the air
+// cavity pinching off into a bubble whose pitch rises as it rings, a burst
+// of smaller bubbles, higher the smaller they are (Minnaert), and the
+// drops falling back.
 //
 // Browsers only allow sound after a tap or a key, so nothing is made until
 // unlock() is called from one.
@@ -21,8 +42,21 @@ let master = null;
 let noise = null;
 let slosh = null;
 let on = true;
-let sloshLevel = 0;
+let sloshGap = Infinity;
 let sloshHeld = false;
+
+// The recordings, and where in each the sound starts, so it lands on the
+// moment it belongs to rather than after the file's lead-in.
+const RECORDINGS = {
+  hit: { url: "/sounds/SoccerKick.wav", from: 0.04, gain: 0.33 },
+  splash: { url: "/sounds/waterSplash.wav", from: 0.26, gain: 0.45 },
+};
+const recorded = {};
+
+const PERFECT_GAIN = 0.21;
+
+// A free-free beam's modes, as multiples of the lowest.
+const WOOD = [1, 2.756, 5.404, 8.933];
 
 export function setSoundOn(value) {
   on = value;
@@ -42,6 +76,9 @@ export function unlock() {
     master.connect(limiter).connect(ctx.destination);
     noise = makeNoise();
     startSlosh();
+    for (const [name, { url }] of Object.entries(RECORDINGS)) {
+      loadSound(url).then((buffer) => (recorded[name] = buffer), () => {});
+    }
   }
   if (ctx.state === "suspended") ctx.resume().catch(() => {});
 }
@@ -77,133 +114,226 @@ function envelope(gain, at, peak, attack, decay) {
 
 const ready = () => ctx && on && ctx.state === "running";
 
+// A recording, fetched and decoded for this context.
+function loadSound(url) {
+  return fetch(url)
+    .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error(`${res.status}`))))
+    .then((bytes) => ctx.decodeAudioData(bytes));
+}
+
+// A sound gap layers below the one being built: quieter by about the
+// inverse square of the distance past the first few layers, and duller,
+// since distance takes the highs off a sound first.
+function far(gap) {
+  const d = Math.max(0, gap);
+  return { gain: 1 / (1 + (d / 3) ** 2), cutoff: 18000 / (1 + d * 0.6) };
+}
+
+// A way into the master for one sound from gap layers down.
+function distant(gap) {
+  const { gain, cutoff } = far(gap);
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = cutoff;
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  filter.connect(g).connect(master);
+  return filter;
+}
+
+// Plays a loaded recording from its start point. Returns false when it has
+// not loaded, so the caller can play its stand-in.
+function playRecorded(name, level, rate, dest = master) {
+  const buffer = recorded[name];
+  if (!buffer) return false;
+  const { from: start, gain } = RECORDINGS[name];
+  const at = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = rate;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(gain * level, at + 0.004);
+  src.connect(g).connect(dest);
+  src.start(at, start);
+  return true;
+}
+
+/* ---- the pieces of a sound ---- */
+
+const jitter = (amount) => 1 + (Math.random() - 0.5) * amount;
+
+// A sine that starts at level and dies away with the given time constant,
+// its pitch rising by rise over the first part of that.
+function ring(at, freq, level, decay, dest = master, rise = 1) {
+  const osc = ctx.createOscillator();
+  osc.frequency.setValueAtTime(freq, at);
+  if (rise !== 1) osc.frequency.exponentialRampToValueAtTime(freq * rise, at + decay * 4);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(level, at + 0.0015);
+  g.gain.setTargetAtTime(0, at + 0.0015, decay);
+  osc.connect(g).connect(dest);
+  osc.start(at);
+  osc.stop(at + 0.0015 + decay * 7);
+}
+
+// A burst of filtered noise: the click of a contact, a slap, a hiss.
+// Returns the filter, so a caller can sweep it.
+function burst(at, { level, decay, attack = 0.0008, type = "bandpass", freq = 3000, q = 0.8, kind = "white", dest = master }) {
+  const src = noiseSource(kind);
+  const filter = ctx.createBiquadFilter();
+  filter.type = type;
+  filter.frequency.value = freq;
+  filter.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(level, at + attack);
+  g.gain.setTargetAtTime(0, at + attack, decay);
+  src.connect(filter).connect(g).connect(dest);
+  src.start(at, Math.random());
+  src.stop(at + attack + decay * 7);
+  return filter;
+}
+
+// A wooden block struck: its modes, set off by a contact click. ringFor
+// stretches or shortens every mode's decay; bright is the click's centre.
+function knock(at, f0, level, ringFor = 1, { bright = 3200, dest = master } = {}) {
+  const out = ctx.createGain();
+  out.gain.value = level;
+  out.connect(dest);
+  const levels = [0.6, 0.3, 0.15, 0.07];
+  const decays = [0.055, 0.032, 0.017, 0.009];
+  WOOD.forEach((ratio, i) => ring(at, f0 * ratio * jitter(0.04), levels[i], decays[i] * ringFor, out));
+  burst(at, { level: 0.45, decay: 0.0012, freq: bright * jitter(0.2), q: 0.7, dest: out });
+}
+
+// A bubble ringing at its own pitch, which rises as it nears the surface.
+// The smaller it is, the higher and the shorter.
+function bubble(at, freq, level, dest = master) {
+  ring(at, freq, level, Math.min(0.045, 22 / freq), dest, 1.15 + Math.random() * 0.3);
+}
+
 /* ---- one-shots ---- */
 
 export function playDrop(strength = 1) {
   if (!ready()) return;
   const at = ctx.currentTime;
-  const body = ctx.createOscillator();
-  const bodyGain = ctx.createGain();
-  body.type = "sine";
-  body.frequency.setValueAtTime(190, at);
-  body.frequency.exponentialRampToValueAtTime(95, at + 0.09);
-  envelope(bodyGain, at, 0.5 * strength, 0.004, 0.12);
-  body.connect(bodyGain).connect(master);
-  body.start(at);
-  body.stop(at + 0.2);
+  // The weight of the slab coming down on the tower.
+  const thud = ctx.createOscillator();
+  thud.frequency.setValueAtTime(110 * jitter(0.1), at);
+  thud.frequency.exponentialRampToValueAtTime(62, at + 0.08);
+  const tg = ctx.createGain();
+  envelope(tg, at, 0.25 * strength, 0.003, 0.1);
+  thud.connect(tg).connect(master);
+  thud.start(at);
+  thud.stop(at + 0.15);
 
-  const click = noiseSource();
-  const band = ctx.createBiquadFilter();
-  band.type = "bandpass";
-  band.frequency.value = 900;
-  band.Q.value = 1.4;
-  const clickGain = ctx.createGain();
-  envelope(clickGain, at, 0.35 * strength, 0.002, 0.06);
-  click.connect(band).connect(clickGain).connect(master);
-  click.start(at, Math.random());
-  click.stop(at + 0.1);
+  knock(at, 300 + Math.random() * 40, 0.32 * strength);
 }
+
+// Semitones of the major pentatonic scale.
+const PENTATONIC = [0, 2, 4, 7, 9];
 
 export function playPerfect(step) {
   if (!ready()) return;
   const at = ctx.currentTime;
-  const pos = (((step - 1) % 12) + 12) % 12 / 12;
+  const pos = PENTATONIC[(((step - 1) % 5) + 5) % 5] / 12;
   const out = ctx.createGain();
-  out.gain.value = 0.32;
-  out.connect(master);
+  out.gain.value = PERFECT_GAIN;
+  const soft = ctx.createBiquadFilter();
+  soft.type = "lowpass";
+  soft.frequency.value = 1800;
+  soft.Q.value = 0.5;
+  out.connect(soft).connect(master);
   for (let k = 0; k < 8; k++) {
     const octave = k + pos;
-    const freq = 55 * 2 ** octave;
-    // The fixed bell curve over octaves that makes the rise endless.
-    const weight = Math.exp(-((octave - 4) ** 2) / (2 * 1.3 ** 2));
+    // The fixed bell curve over octaves that makes the rise endless,
+    // centred on 440 Hz.
+    const weight = Math.exp(-((octave - 3) ** 2) / 2);
     if (weight < 0.02) continue;
     const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = freq;
+    osc.frequency.value = 55 * 2 ** octave;
     const g = ctx.createGain();
-    envelope(g, at, weight * 0.5, 0.008, 0.55);
+    envelope(g, at, weight * 0.5, 0.015, 0.95);
     osc.connect(g).connect(out);
     osc.start(at);
-    osc.stop(at + 0.7);
+    osc.stop(at + 1.05);
   }
-  // A soft bright edge on top, so a perfect reads as a chime.
-  const shine = ctx.createOscillator();
-  shine.type = "triangle";
-  shine.frequency.value = 55 * 2 ** (4 + pos) * 2;
-  const sg = ctx.createGain();
-  envelope(sg, at, 0.06, 0.004, 0.25);
-  shine.connect(sg).connect(out);
-  shine.start(at);
-  shine.stop(at + 0.35);
+
+  knock(at, 330 + Math.random() * 30, 0.15);
 }
 
 export function playHit(strength = 0.5) {
   if (!ready()) return;
+  // Harder knocks a little lower, and no two quite the same.
+  if (playRecorded("hit", 0.2 + 0.8 * strength, (1.08 - 0.12 * strength) * jitter(0.1))) return;
   const at = ctx.currentTime;
-  const level = 0.15 + 0.45 * strength;
-  const tone = ctx.createOscillator();
-  tone.type = "triangle";
-  tone.frequency.setValueAtTime(760 + Math.random() * 180, at);
-  tone.frequency.exponentialRampToValueAtTime(420, at + 0.05);
-  const tg = ctx.createGain();
-  envelope(tg, at, level * 0.6, 0.002, 0.07);
-  tone.connect(tg).connect(master);
-  tone.start(at);
-  tone.stop(at + 0.12);
-
-  const click = noiseSource();
-  const band = ctx.createBiquadFilter();
-  band.type = "bandpass";
-  band.frequency.value = 2200;
-  band.Q.value = 2;
-  const cg = ctx.createGain();
-  envelope(cg, at, level * 0.5, 0.001, 0.04);
-  click.connect(band).connect(cg).connect(master);
-  click.start(at, Math.random());
-  click.stop(at + 0.08);
+  // A smaller piece, so it rings higher and shorter than a whole slab.
+  knock(at, 470 + Math.random() * 140, 0.05 + 0.18 * strength, 0.75, { bright: 4200 });
 }
 
 export function playLand(strength = 0.5) {
   if (!ready()) return;
   const at = ctx.currentTime;
-  const thud = noiseSource("brown");
-  const low = ctx.createBiquadFilter();
-  low.type = "lowpass";
-  low.frequency.value = 420;
-  const g = ctx.createGain();
-  envelope(g, at, 0.3 + 0.5 * strength, 0.004, 0.16);
-  thud.connect(low).connect(g).connect(master);
-  thud.start(at, Math.random());
-  thud.stop(at + 0.25);
+  const level = 0.14 + 0.22 * strength;
+  burst(at, { level, decay: 0.05, attack: 0.003, type: "lowpass", freq: 320, q: 0.7, kind: "brown" });
+  // The wood, muffled: the sand stops it ringing.
+  const muffle = ctx.createBiquadFilter();
+  muffle.type = "lowpass";
+  muffle.frequency.value = 1400;
+  muffle.connect(master);
+  knock(at, 260 + Math.random() * 40, level * 0.6, 0.35, { bright: 1800, dest: muffle });
+  // Sand thrown up and pattering back.
+  for (let i = 0; i < 5; i++) {
+    const t = at + 0.01 + Math.random() * 0.09;
+    burst(t, { level: 0.05 * level * Math.random(), decay: 0.002, type: "highpass", freq: 3500, q: 0.5 });
+  }
 }
 
-export function playSplash(strength = 0.6) {
+// gap: how many layers below the one being built it hit the water.
+export function playSplash(strength = 0.6, gap = 0) {
   if (!ready()) return;
-  const at = ctx.currentTime;
   const size = 0.35 + 0.65 * strength;
-  const wash = noiseSource();
-  const low = ctx.createBiquadFilter();
-  low.type = "lowpass";
-  low.frequency.setValueAtTime(3800, at);
-  low.frequency.exponentialRampToValueAtTime(380, at + 0.5 * size + 0.15);
-  const g = ctx.createGain();
-  envelope(g, at, 0.45 * size, 0.01, 0.4 * size + 0.15);
-  wash.connect(low).connect(g).connect(master);
-  wash.start(at, Math.random());
-  wash.stop(at + 0.8);
+  const dest = distant(gap);
+  // A bigger splash a little lower, and no two quite the same.
+  if (playRecorded("splash", size, (1.12 - 0.22 * strength) * jitter(0.06), dest)) return;
+  synthSplash(size, dest);
+}
 
-  // A few bubbles after it.
-  for (let i = 0; i < 3; i++) {
-    const t = at + 0.08 + i * 0.07 + Math.random() * 0.05;
-    const b = ctx.createOscillator();
-    b.type = "sine";
-    b.frequency.setValueAtTime(260 + Math.random() * 200, t);
-    b.frequency.exponentialRampToValueAtTime(700 + Math.random() * 400, t + 0.06);
-    const bg = ctx.createGain();
-    envelope(bg, t, 0.08 * size, 0.004, 0.05);
-    b.connect(bg).connect(master);
-    b.start(t);
-    b.stop(t + 0.09);
+function synthSplash(size, dest) {
+  const at = ctx.currentTime;
+  const out = ctx.createGain();
+  out.gain.value = 0.4;
+  out.connect(dest);
+
+  // The slap as it hits the surface.
+  burst(at, { level: 0.5 * size, decay: 0.012, attack: 0.001, type: "highpass", freq: 700, q: 0.5, dest: out });
+
+  // The crown thrown up: a hiss that darkens as it falls back.
+  const crown = burst(at + 0.004, { level: 0.32 * size, decay: 0.08 + 0.12 * size, attack: 0.012, type: "lowpass", freq: 5200, q: 0.6, dest: out });
+  crown.frequency.setValueAtTime(5200, at + 0.004);
+  crown.frequency.exponentialRampToValueAtTime(700, at + 0.35 * size + 0.12);
+
+  // The cavity pinching off: one big low bubble, the plunk. The bigger
+  // the splash, the bigger the bubble and the lower it rings.
+  const plunkAt = at + 0.045 + 0.04 * size + Math.random() * 0.015;
+  ring(plunkAt, (170 + (1 - size) * 300) * jitter(0.15), 0.38 * size, 0.055, out, 1.5);
+
+  // Smaller bubbles shaken loose, most of them early.
+  const bubbles = 4 + Math.round(8 * size);
+  for (let i = 0; i < bubbles; i++) {
+    const t = at + 0.03 + Math.random() ** 1.6 * (0.25 + 0.2 * size);
+    const freq = 650 + Math.random() ** 2 * 2400;
+    bubble(t, freq, (0.05 + 0.07 * Math.random()) * size * Math.sqrt(900 / freq), out);
+  }
+
+  // Drops falling back onto the water.
+  const drops = 2 + Math.round(4 * size);
+  for (let i = 0; i < drops; i++) {
+    const t = at + 0.18 + Math.random() * 0.45 * size;
+    burst(t, { level: 0.03 * size, decay: 0.0015, type: "highpass", freq: 2500, q: 0.5, dest: out });
+    bubble(t + 0.002, 1600 + Math.random() * 2600, 0.035 * size, out);
   }
 }
 
@@ -223,7 +353,60 @@ export function playGameOver() {
 
 /* ---- the water's loop ---- */
 
+// The recording fades in and out at its ends, so those are cut, and the
+// end is crossfaded into the start so it loops without a seam: a wave
+// washing in and back out every seven seconds or so.
+const SLOSH_URL = "/sounds/haishui.wav";
+const SLOSH_TRIM = [0.75, 9.25];
+const SLOSH_FADE = 1.5;
+const SLOSH_GAIN = 1.3;
+const SLOSH_LOUD = 0.9;
+
 function startSlosh() {
+  const level = ctx.createGain();
+  level.gain.value = 0;
+  const dull = ctx.createBiquadFilter();
+  dull.type = "lowpass";
+  dull.connect(level).connect(master);
+  slosh = { level, dull };
+  setSlosh(sloshGap, sloshHeld);
+  loadSound(SLOSH_URL)
+    .then((buffer) => {
+      const src = ctx.createBufferSource();
+      src.buffer = seamless(buffer);
+      src.loop = true;
+      const gain = ctx.createGain();
+      gain.gain.value = SLOSH_GAIN;
+      src.connect(gain).connect(dull);
+      src.start();
+    })
+    // No recording, say offline before the first visit finished caching:
+    // the water makes do with filtered noise.
+    .catch(() => synthSlosh(dull));
+}
+
+function seamless(buffer) {
+  const rate = buffer.sampleRate;
+  const from = Math.round(SLOSH_TRIM[0] * rate);
+  const to = Math.min(buffer.length, Math.round(SLOSH_TRIM[1] * rate));
+  const fade = Math.round(SLOSH_FADE * rate);
+  const length = to - from - fade;
+  const out = ctx.createBuffer(buffer.numberOfChannels, length, rate);
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const src = buffer.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    dst.set(src.subarray(from, from + length));
+    // The start fades in under the end fading out, at equal power, so the
+    // last sample runs straight on into the first.
+    for (let i = 0; i < fade; i++) {
+      const k = (i / fade) * (Math.PI / 2);
+      dst[i] = src[from + i] * Math.sin(k) + src[to - fade + i] * Math.cos(k);
+    }
+  }
+  return out;
+}
+
+function synthSlosh(dest) {
   const src = noiseSource("brown");
   src.loop = true;
   const low = ctx.createBiquadFilter();
@@ -243,23 +426,22 @@ function startSlosh() {
   const lfo2Depth = ctx.createGain();
   lfo2Depth.gain.value = 220;
   lfo2.connect(lfo2Depth).connect(low.frequency);
-  const level = ctx.createGain();
-  level.gain.value = 0;
-  src.connect(low).connect(swell).connect(level).connect(master);
+  src.connect(low).connect(swell).connect(dest);
   src.start();
   lfo.start();
   lfo2.start();
-  slosh = level;
 }
 
-// 0 when the water is far below the top of the tower, 1 when it is about
-// to reach it. Held at silence while the game is paused or over.
-export function setSlosh(level, held = false) {
-  sloshLevel = Math.max(0, Math.min(1, level));
+// gap: how many layers the water is below the one being built. Held at
+// silence, whatever the gap, while the game is paused or over.
+export function setSlosh(gap, held = false) {
+  sloshGap = gap;
   sloshHeld = held;
   if (!slosh) return;
-  const target = sloshHeld ? 0 : 0.02 + sloshLevel * sloshLevel * 0.9;
-  slosh.gain.setTargetAtTime(target, ctx.currentTime, 0.25);
+  const { gain, cutoff } = far(gap);
+  const at = ctx.currentTime;
+  slosh.level.gain.setTargetAtTime(held ? 0 : SLOSH_LOUD * gain, at, 0.25);
+  slosh.dull.frequency.setTargetAtTime(cutoff, at, 0.25);
 }
 
 // Silence the loop when the page is hidden, and bring it back after.

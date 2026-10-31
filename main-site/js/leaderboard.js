@@ -1,5 +1,5 @@
-// The leaderboard window: best score or total points, one row per name,
-// after MRT Station Guesser's.
+// The leaderboard window: best score, tallest tower or total points, one
+// row per name, after MRT Station Guesser's.
 
 import { api } from "./api.js";
 import { difficultyOf } from "./rules.js";
@@ -7,9 +7,14 @@ import { escapeHtml, openModal } from "./ui.js";
 
 const BOARDS = {
   best: {
-    head: ["#", "Name", "Score", "Mode", "Layers"],
+    head: ["#", "Name", "Score", "Mode", "Height"],
     row: (e) => [e.rank, e.name, e.score, difficultyOf(e.difficulty).label, e.layers],
     about: "Each name's single best game. Harder modes and time limits score more.",
+  },
+  tallest: {
+    head: ["#", "Name", "Height", "Mode", "Score"],
+    row: (e) => [e.rank, e.name, e.layers, difficultyOf(e.difficulty).label, e.score],
+    about: "Each name's highest tower: how many layers high it stood when the game ended.",
   },
   total: {
     head: ["#", "Name", "Total", "Games"],

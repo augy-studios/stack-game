@@ -1,5 +1,6 @@
 // Player settings, after MRT Station Guesser's: the leaderboard name, saved
-// ahead of time under the same check a submission gets, and the switches.
+// ahead of time under the same check a submission gets, the switches, and
+// the graphics quality.
 // Kept in this browser. The difficulty and time limits are kept here too,
 // but picked on the start panel rather than in the window.
 
@@ -15,6 +16,7 @@ const DEFAULTS = {
   auto_replay: true,
   sound: true,
   haptics: true,
+  quality: "high",
   difficulty: "medium",
   turn: 0,
   game: 0,
@@ -31,6 +33,7 @@ function load() {
   const out = { ...DEFAULTS };
   if (typeof saved.name === "string" && saved.name.trim()) out.name = saved.name.trim();
   for (const key of SWITCHES) if (typeof saved[key] === "boolean") out[key] = saved[key];
+  out.quality = saved.quality === "low" ? "low" : "high";
   out.difficulty = cleanDifficulty(saved.difficulty);
   out.turn = cleanTurn(saved.turn);
   out.game = cleanGameLimit(saved.game);
@@ -68,6 +71,9 @@ function render() {
     const on = s[el.dataset.setting];
     el.setAttribute("aria-checked", String(on));
     el.querySelector(".switch-state").textContent = on ? "On" : "Off";
+  });
+  document.querySelectorAll("#qualityPick [data-quality]").forEach((el) => {
+    el.setAttribute("aria-checked", String(el.dataset.quality === s.quality));
   });
   const auto = document.querySelector('[data-setting="auto_submit"]');
   auto.disabled = !s.name;
@@ -118,6 +124,10 @@ export function initSettings() {
   });
   document.querySelectorAll("#settingsModal [data-setting]").forEach((el) => {
     el.addEventListener("click", () => saveSettings({ [el.dataset.setting]: !getSettings()[el.dataset.setting] }));
+  });
+  $("qualityPick").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-quality]");
+    if (btn) saveSettings({ quality: btn.dataset.quality });
   });
   render();
 }

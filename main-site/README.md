@@ -32,13 +32,14 @@ the browser and the server always agree on a game.
 | `fall.js` | Cut-off pieces tipping, knocking against wider layers and splashing, worked out once in fixed steps so they fall the same way live and in the replay. |
 | `scene.js` | The three.js world: the gradient sky, stars and clouds, the water, the island, the tower, the slab, the pieces and the perfect rings. |
 | `view.js` | Turns a game at a moment into what the scene draws and the speakers play, for the live game and the replay alike. |
-| `audio.js` | Every sound, synthesised with Web Audio: no sound files. |
+| `audio.js` | Every sound. A falling piece's knock, the splash and the water's loop are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
 | `game.js` | The game screen: the start panel, play, the result, submitting, sharing, and shared replays. |
 | `replay.js` | The instant replay's controls. |
 | `party.js` | Races on one network, on top of `net.js`. |
 | `net.js` | Pairing over PeerJS, STUN only, from `STUN-p2p-spec.md`, after uwuChess's. |
 | `qr.js` | QR encoder for the join link, from uwuPromptr, so it works offline. |
 | `tray.js`, `fullscreen.js` | The Edge Tray, and full screen. |
+| `freecam.js` | The replay's free camera: drag, pinch and scroll to look round the tower. |
 | `api.js`, `leaderboard.js`, `settings.js` | The API client, and the leaderboard and settings windows, after MRT Station Guesser's. |
 | `theme.js`, `icons.js`, `ui.js`, `update-bar.js`, `app.js` | Theme, inline SVG icons, modal and storage helpers, the update bar, and boot. |
 
@@ -90,11 +91,10 @@ so the score grows with the game. Then:
 The game's total is then scaled by the mode, the game length, and the time
 survived: 1% more for every 6 seconds, up to 50% at five minutes.
 
-**Full screen.** The game always fills the window, and the first tap that
-starts a game asks the browser for real full screen too. Leaving it, with the
-tray's button or the browser's own way out, is respected until the page is
-reloaded. Safari on iPhone lets only video go full screen, so there the game
-fills the window; added to the home screen, it opens full screen.
+**Full screen.** The game always fills the window. Real full screen comes
+only from the tray's button; starting a game never asks for it. Safari on
+iPhone lets only video go full screen, so there the game fills the window;
+added to the home screen, it opens full screen.
 
 **The Edge Tray**, top right, per `edge-tray-spec.md`: full screen, sound,
 races, the leaderboard, settings, the theme, and the coffee link. Its tab
@@ -106,6 +106,14 @@ and all. Play and pause, a step back or forward one slab at a time, a
 timeline, and 0.5x, 1x, 2x or 4x as in the word rain game, the speed picked
 last remembered in this browser. Space, and the left and right arrows, work
 too. The panel folds away to watch the replay with nothing in front of it.
+While a replay shows, the camera is free: drag to turn round the tower and
+look from higher or lower, pinch or scroll to zoom, drag with two fingers
+(or the right mouse button, or Shift) to move up and down it, and
+double-tap to put it back.
+
+**Quality.** Settings has High and Low graphics. Low draws one pixel per
+CSS pixel without antialiasing and gives the water a coarser mesh and no
+fine ripples, for a smoother game on a slower device.
 
 **Sharing a replay.** Share replay makes a link, through the device's share
 sheet where it has one and the clipboard otherwise. Online, it is a short
@@ -194,7 +202,7 @@ every change to anything in this directory.
 | `POST /api/game/finish` | `game_id, client_key, record` | `elapsed_ms` |
 | `POST /api/game/submit` | `game_id, client_key, name, record` | `name, score, layers, elapsed_ms, rank, best_score, total, games, total_rank` |
 | `POST /api/leaderboard/name` | `name` | `name`, cleaned, or a `400` saying why not |
-| `GET /api/leaderboard` | `?board=best` or `?board=total` | `board, entries`, cached 30 s |
+| `GET /api/leaderboard` | `?board=best`, `?board=tallest` or `?board=total` | `board, entries`, cached 30 s |
 | `POST /api/replay/create` | `game_id, client_key, name?`, or `record, name?` | `id`, for `/r/<id>` |
 | `GET /api/replay` | `?id=` | `record, name, verified, created_at`, cached a day |
 

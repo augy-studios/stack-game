@@ -51,6 +51,7 @@ new file with the next number. Each file is safe to run again.
 | File | What it does |
 | --- | --- |
 | `001_uwustack_schema.sql` | Games (the start tickets), the leaderboard and its best and total views, the short replay links, rate limits, and the finish, submit and prune functions. |
+| `002_uwustack_tallest.sql` | The tallest-tower board: each name's highest tower. |
 
 Every table has row level security on with no policies. Only the service
 role key, used by the Vercel functions, can read or write, and only it can

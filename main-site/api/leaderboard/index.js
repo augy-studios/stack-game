@@ -1,5 +1,6 @@
-// GET /api/leaderboard?board=best|total
+// GET /api/leaderboard?board=best|tallest|total
 //   best  (default) -> { board, entries: [{ rank, name, score, layers, difficulty }] }
+//   tallest         -> { board, entries: [{ rank, name, layers, score, difficulty }] }
 //   total           -> { board, entries: [{ rank, name, total, games }] }
 // Public, no login, one row per name, cached briefly at the edge.
 
@@ -12,6 +13,10 @@ const BOARDS = {
   best: {
     query: `uwustack_leaderboard_best?select=name,score,layers,difficulty&order=score.desc,created_at.asc&limit=${LIMIT}`,
     row: (r) => ({ name: r.name, score: r.score, layers: r.layers, difficulty: r.difficulty }),
+  },
+  tallest: {
+    query: `uwustack_leaderboard_tallest?select=name,layers,score,difficulty&order=layers.desc,created_at.asc&limit=${LIMIT}`,
+    row: (r) => ({ name: r.name, layers: r.layers, score: r.score, difficulty: r.difficulty }),
   },
   total: {
     query: `uwustack_leaderboard_total?select=name,total,games&order=total.desc,games.asc,last_at.asc&limit=${LIMIT}`,

@@ -278,6 +278,7 @@
             </div>
             <input id="rpScrub" class="scrub" type="range" min="0" max="0" value="0" step="10" aria-label="Replay position">
             <p id="rpLabel" class="replay-label" aria-live="polite"></p>
+            <p class="replay-hint">Drag the picture to look round the tower. Pinch or scroll to zoom, drag with two fingers to move up and down, and double-tap to reset.</p>
         </div>
 
         <div id="resultBody" class="result-body">
@@ -321,8 +322,9 @@
                     <span data-icon="close"></span>
                 </button>
             </div>
-            <div class="mode-toggle" id="boardTabs" role="tablist" aria-label="Board">
+            <div class="mode-toggle thirds" id="boardTabs" role="tablist" aria-label="Board">
                 <button class="mode-btn active" type="button" role="tab" data-board="best" aria-selected="true" aria-controls="boardBody">Best score</button>
+                <button class="mode-btn" type="button" role="tab" data-board="tallest" aria-selected="false" aria-controls="boardBody">Tallest</button>
                 <button class="mode-btn" type="button" role="tab" data-board="total" aria-selected="false" aria-controls="boardBody">Total points</button>
             </div>
             <div id="boardBody" class="board-body" role="tabpanel"></div>
@@ -369,9 +371,16 @@
                 <span class="switch-state"></span><span class="switch" aria-hidden="true"></span>
             </button>
             <button class="setting-toggle" type="button" role="switch" aria-checked="true" data-setting="haptics">
-                <span>Buzz on a perfect drop, where the device can</span>
+                <span>Short buzzes on perfect drops, knocks and splashes, where the device can</span>
                 <span class="switch-state"></span><span class="switch" aria-hidden="true"></span>
             </button>
+
+            <p class="modal-section-label">Graphics</p>
+            <div class="mode-toggle" id="qualityPick" role="radiogroup" aria-label="Graphics quality">
+                <button class="mode-btn" type="button" role="radio" aria-checked="true" data-quality="high">High</button>
+                <button class="mode-btn" type="button" role="radio" aria-checked="false" data-quality="low">Low</button>
+            </div>
+            <p class="mode-note">Low draws fewer pixels and plainer water, for a smoother game on a slower device.</p>
 
             <p class="mode-note">
                 Tap, Space or Enter drops the slab. The leaderboard name is filled in whenever you add a game, so

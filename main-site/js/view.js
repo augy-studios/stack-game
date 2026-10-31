@@ -132,8 +132,9 @@ export function createPresenter() {
   }
 
   // Plays what happened in (from, to]. Skipped for a jump, so seeking the
-  // replay does not play every sound at once.
-  function sounds(state, from, to, { jump = false, slosh = true } = {}) {
+  // replay does not play every sound at once. buzz, when given, is called
+  // for a piece knocking against the tower or going into the water.
+  function sounds(state, from, to, { jump = false, slosh = true, buzz = null } = {}) {
     bind(state);
     if (!(to > from)) return;
     const count = countAt(to);
@@ -150,9 +151,10 @@ export function createPresenter() {
       piecesAt(count, to, (fall) => {
         for (const hit of fall.impacts) {
           if (hit.t <= from || hit.t > to) continue;
-          if (hit.kind === "water") audio.playSplash(hit.strength);
+          if (hit.kind === "water") audio.playSplash(hit.strength, ((count - 1) * LAYER - waterAtTime(hit.t)) / LAYER);
           else if (hit.kind === "island") audio.playLand(hit.strength);
           else audio.playHit(hit.strength);
+          if (hit.kind !== "island") buzz?.();
         }
       });
       if (game.over && game.over.at > from && game.over.at <= to) audio.playGameOver();
@@ -160,7 +162,7 @@ export function createPresenter() {
     if (slosh) {
       const ended = game.over && to >= game.over.at;
       const gap = (count - 1) * LAYER - waterAtTime(to);
-      audio.setSlosh(1 - gap / (5 * LAYER), ended);
+      audio.setSlosh(gap / LAYER, ended);
     }
   }
   return { view, sounds, countAt };

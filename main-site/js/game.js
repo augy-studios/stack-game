@@ -22,11 +22,11 @@ import { packRecord } from "./record.js";
 import { createScene } from "./scene.js";
 import { createPresenter } from "./view.js";
 import { createReplay } from "./replay.js";
+import { orbit, setFree, initFreecam } from "./freecam.js";
 import * as audio from "./audio.js";
 import { api } from "./api.js";
 import { getSettings, saveSettings, onSettings } from "./settings.js";
 import { openLeaderboard } from "./leaderboard.js";
-import { enterOnPlay } from "./fullscreen.js";
 import { copyText, escapeHtml, hydrateIcons, store } from "./ui.js";
 
 const AUTO_SPEED = 2.5;
@@ -163,7 +163,6 @@ export function startGame(opts = {}) {
   const settings = opts.settings ?? menuSettings();
   const seed = opts.seed ?? newSeed();
   audio.unlock();
-  enterOnPlay();
 
   S.gameNo += 1;
   S.mode = "playing";
@@ -268,13 +267,19 @@ function nextAlign(speed, spawnAt, after) {
   }
 }
 
+// A short tick, where the device has a vibrator, for a game played by hand:
+// a perfect drop, and a cut-off piece knocking against the tower or going
+// into the water.
+function buzz() {
+  if (!S.auto && getSettings().haptics) navigator.vibrate?.(6);
+}
+
 function drop(t) {
   const st = S.state;
   S.taps.push(t);
   const landed = tapAt(st, t);
-  // A buzz for a perfect drop by a hand, where the device has one.
-  if (landed?.perfect && !S.auto && getSettings().haptics) navigator.vibrate?.(12);
-  if (!st.over || st.over.at >= t) presenter.sounds(st, t - 1, t, { slosh: false });
+  if (landed?.perfect) buzz();
+  if (!st.over || st.over.at >= t) presenter.sounds(st, t - 1, t, { slosh: false, buzz });
   if (!store.get(HINT_KEY)) {
     store.set(HINT_KEY, "1");
     show("tapHint", false);
@@ -315,7 +320,7 @@ function stepLive(dt) {
   advance(st, Math.floor(to), true);
   if (st.drops.length !== dropsBefore) reportRace();
   S.sim = to;
-  presenter.sounds(st, from, to);
+  presenter.sounds(st, from, to, { buzz });
   if (st.over) endGame();
 }
 
@@ -677,7 +682,10 @@ function frame(now) {
     audio.setSlosh(0, true);
   }
 
-  scene?.draw({ ...view, overview, cover: sheetCover(), dt, clock });
+  // A replay showing, after a game or from a link: the camera is free.
+  const free = S.mode === "over" || S.mode === "shared";
+  setFree(free);
+  scene?.draw({ ...view, overview, cover: sheetCover(), dt, clock, orbit: free ? orbit : null });
   requestAnimationFrame(frame);
 }
 
@@ -747,13 +755,15 @@ function bindMenu() {
 
 export function initGame({ onRace }) {
   try {
-    scene = createScene($("stage"));
+    scene = createScene($("stage"), { quality: getSettings().quality });
+    onSettings((s) => scene.setQuality(s.quality));
   } catch (err) {
     console.error(err);
     show("noWebgl", true);
   }
 
   replay.init();
+  initFreecam($("stage"));
   bindMenu();
   watchBrand();
 

@@ -18,6 +18,31 @@ const FOV = 40;
 const DIR = new THREE.Vector3(1, 0.62, 1).normalize();
 const RING_MS = 650;
 
+// The island: a ten-sided cone of sand under a disc of grass. The water
+// works out its depth and its shoreline from the same numbers.
+const ISLAND_Y = ISLAND_TOP * S;
+const SAND_TOP_R = 2.3;
+const SAND_BOTTOM_R = 3.2;
+const SAND_HEIGHT = 3;
+const SAND_TOP_Y = ISLAND_Y - 0.06;
+const GRASS_R = 2.05;
+const GRASS_TOP_Y = ISLAND_Y + 0.05;
+
+// Where pieces went into the water, for the rings that spread from there.
+const RIPPLES = 4;
+const RIPPLE_MS = 2500;
+
+// The sun the water glints with: low behind the tower, where the sky's
+// glow is, so its path runs across the water towards the camera.
+const GLINT = new THREE.Vector3(-1, 0.36, -1).normalize();
+
+// The camera's usual direction from the tower, as an angle up from level
+// and an angle round, which the replay's free camera turns from.
+const BASE_RISE = Math.asin(DIR.y);
+const BASE_ROUND = Math.atan2(DIR.x, DIR.z);
+const NO_ORBIT = Object.freeze({ yaw: 0, pitch: 0, zoom: 1, lift: 0 });
+const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
 // A layer's colour: the seed picks where on the wheel the tower starts, and
 // every layer turns it a little, so the tower fades through the colours as
 // it climbs. Pastel, like everything else in the app.
@@ -73,6 +98,76 @@ function frameGeometry(inner) {
   return geo;
 }
 
+// Joins parts into one geometry with a colour per vertex, each part shaded
+// from its base colour at y0 to its tip colour at y1, so a whole plant is
+// one piece to draw.
+function joinParts(parts) {
+  const position = [];
+  const colour = [];
+  const c = new THREE.Color();
+  for (const { geo, base, tip = base, y0 = 0, y1 = 1 } of parts) {
+    const p = (geo.index ? geo.toNonIndexed() : geo).attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      position.push(p.getX(i), y, p.getZ(i));
+      c.copy(base).lerp(tip, THREE.MathUtils.clamp((y - y0) / (y1 - y0), 0, 1));
+      colour.push(c.r, c.g, c.b);
+    }
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.Float32BufferAttribute(position, 3));
+  out.setAttribute("color", new THREE.Float32BufferAttribute(colour, 3));
+  out.computeVertexNormals();
+  return out;
+}
+
+const place = (geo, { x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1 }) =>
+  geo.scale(sx, sy, sz).rotateX(rx).rotateZ(rz).rotateY(ry).translate(x, y, z);
+
+// A tuft: five thin blades leaning out from one root, dark at the base and
+// light at the tips, as stylised grass is drawn.
+function tuftGeometry(rand) {
+  const base = new THREE.Color("#5f9a52");
+  const tip = new THREE.Color("#cdeaa2");
+  const parts = [];
+  for (let i = 0; i < 5; i++) {
+    const h = 0.09 + rand() * 0.07;
+    const geo = new THREE.ConeGeometry(0.011, h, 3, 1).translate(0, h / 2, 0);
+    const a = (i / 5) * Math.PI * 2 + rand();
+    place(geo, { x: Math.cos(a) * 0.012, z: Math.sin(a) * 0.012, rx: (rand() - 0.5) * 0.7, rz: (rand() - 0.5) * 0.7, ry: rand() * Math.PI });
+    parts.push({ geo, base, tip, y0: 0, y1: 0.16 });
+  }
+  return joinParts(parts);
+}
+
+// A flower: a stem with one leaf, five petals round a centre.
+function flowerGeometry(petal, middle) {
+  const stemBase = new THREE.Color("#5a9150");
+  const stemTip = new THREE.Color("#8cc277");
+  const h = 0.13;
+  const parts = [
+    { geo: new THREE.CylinderGeometry(0.005, 0.007, h, 4).translate(0, h / 2, 0), base: stemBase, tip: stemTip, y1: h },
+    { geo: place(new THREE.IcosahedronGeometry(0.018, 0), { x: 0.016, y: 0.045, sx: 1.6, sy: 0.3, sz: 0.8, rz: 0.5 }), base: stemTip },
+  ];
+  const colour = new THREE.Color(petal);
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2;
+    const geo = place(new THREE.IcosahedronGeometry(0.02, 0), { x: 0.022, sx: 1.3, sy: 0.35, sz: 0.8, rz: 0.15 });
+    parts.push({ geo: geo.rotateY(a).translate(0, h, 0), base: colour });
+  }
+  parts.push({ geo: place(new THREE.IcosahedronGeometry(0.014, 0), { y: h + 0.006, sy: 0.6 }), base: new THREE.Color(middle) });
+  return joinParts(parts);
+}
+
+// Pastel, like the rest of the app, each with the centre that suits it.
+const FLOWERS = [
+  ["#f6a9c8", "#ffcf4a"],
+  ["#fbf6ee", "#ffcf4a"],
+  ["#c7b2f0", "#ffd75e"],
+  ["#ffe08a", "#f0a040"],
+  ["#ffb79a", "#ffe08a"],
+];
+
 // The sky is drawn flat across the screen behind the world, top to bottom,
 // so the whole gradient shows whichever way the camera looks, with a soft
 // glow low in the middle where the light is.
@@ -102,47 +197,205 @@ const SKY_FRAGMENT = `
   }
 `;
 
+const num = (x) => x.toFixed(4);
+
+// Gerstner waves, as in GPU Gems, chapter 1: each moves the surface round in
+// circles, so the crests come out sharp and the troughs broad, as water's
+// do. Deep water's dispersion sets their speed, so longer waves run faster.
+// Shared by both shaders: the vertex one moves the mesh, the fragment one
+// takes the exact normal at every pixel.
+const WAVES = `
+  const float STEEP = 0.5;
+
+  void gerstner(vec2 p, vec2 dir, float len, float amp, float t, inout vec3 disp, inout vec3 nrm) {
+    float k = 6.2831853 / len;
+    float w = sqrt(9.8 * k) * 0.6;
+    vec2 d = normalize(dir);
+    float f = k * dot(d, p) - w * t;
+    float q = STEEP / (k * amp * 3.0);
+    float s = sin(f);
+    float c = cos(f);
+    disp.xz += q * amp * d * c;
+    disp.y += amp * s;
+    nrm.xz -= d * (k * amp * c);
+    nrm.y -= q * k * amp * s;
+  }
+
+  // Calmer close in, so the waterline on the tower stays where the game has
+  // it: the waves are only for show.
+  vec3 swell(vec2 p, float t, out vec3 nrm) {
+    vec3 disp = vec3(0.0);
+    nrm = vec3(0.0, 1.0, 0.0);
+    gerstner(p, vec2(1.0, 0.35), 7.5, 0.045, t, disp, nrm);
+    gerstner(p, vec2(0.55, -0.85), 4.9, 0.028, t, disp, nrm);
+    gerstner(p, vec2(-0.3, 1.0), 3.6, 0.018, t, disp, nrm);
+    float calm = mix(0.35, 1.0, smoothstep(0.8, 3.0, length(p)));
+    nrm = vec3(nrm.x * calm, 1.0 - (1.0 - nrm.y) * calm, nrm.z * calm);
+    return disp * calm;
+  }
+`;
+
 const WATER_VERTEX = `
   uniform float uTime;
   varying vec3 vWorld;
-  varying float vWave;
+  varying vec2 vFlat;
+  varying float vHeight;
+  varying vec3 vWaveNormal;
+  ${WAVES}
   void main() {
-    vec3 p = position;
-    float w = sin(p.x * 1.6 + uTime * 1.1) * 0.025 + sin(p.y * 2.1 - uTime * 1.4) * 0.02
-            + sin((p.x + p.y) * 3.3 + uTime * 2.0) * 0.008;
-    p.z += w;
-    vWave = w;
-    vec4 world = modelMatrix * vec4(p, 1.0);
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vec3 n;
+    vec3 disp = swell(world.xz, uTime, n);
+    vFlat = world.xz;
+    vHeight = disp.y;
+    vWaveNormal = n;
+    world.xyz += disp;
     vWorld = world.xyz;
     gl_Position = projectionMatrix * viewMatrix * world;
   }
 `;
 const WATER_FRAGMENT = `
+  uniform float uTime;
   uniform vec3 uDeep;
   uniform vec3 uShallow;
   uniform vec3 uHorizon;
+  uniform vec3 uTop;
+  uniform vec3 uFoam;
+  uniform vec3 uSun;
+  uniform float uGlint;
   uniform float uNear;
   uniform float uFar;
-  uniform float uOpacity;
+  uniform float uLevel;
+  uniform float uShore;
+  uniform vec4 uColumn;
+  uniform vec4 uRipples[${RIPPLES}];
   varying vec3 vWorld;
-  varying float vWave;
+  varying vec2 vFlat;
+  varying float vHeight;
+  varying vec3 vWaveNormal;
+  ${WAVES}
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+
+  // How far out p is on the island's ten-sided outline: its distance to
+  // the side facing it, scaled to the corners' radius.
+  float islandRadius(vec2 p) {
+    float a = mod(atan(p.x, p.y), 0.6283185) - 0.3141593;
+    return length(p) * cos(a) / 0.9510565;
+  }
+
+  // The bottom under the water at that radius: grass, the sand's top, its
+  // slope, then a drop away into deep water.
+  float ground(float r) {
+    if (r < ${num(GRASS_R)}) return ${num(GRASS_TOP_Y)};
+    if (r < ${num(SAND_TOP_R)}) return ${num(SAND_TOP_Y)};
+    if (r < ${num(SAND_BOTTOM_R)}) return ${num(SAND_TOP_Y)} - (r - ${num(SAND_TOP_R)}) * ${num(SAND_HEIGHT / (SAND_BOTTOM_R - SAND_TOP_R))};
+    return ${num(SAND_TOP_Y - SAND_HEIGHT)} - (r - ${num(SAND_BOTTOM_R)}) * 2.0;
+  }
+
+  // Ripples riding on the swell, too fine for the mesh, so only in the
+  // shading. Each fades out before it is too small on screen to draw
+  // cleanly.
+  void chop(vec2 p, vec2 dir, float len, float t, float dist, inout vec3 nrm) {
+    float k = 6.2831853 / len;
+    float w = sqrt(9.8 * k) * 0.6;
+    vec2 d = normalize(dir);
+    float fade = 1.0 - smoothstep(len * 30.0, len * 90.0, dist);
+    nrm.xz -= d * cos(k * dot(d, p) - w * t) * 0.035 * fade;
+  }
+
   void main() {
+    vec2 p = vFlat;
+    float churn = 0.0;
+    float grain = 0.5;
+  #ifdef LOW
+    // Low quality: the mesh's own normal, no ripples, plain foam.
+    vec3 n = normalize(vWaveNormal);
+  #else
+    float dist = length(cameraPosition - vWorld);
+    vec3 n;
+    swell(p, uTime, n);
+    chop(p, vec2(0.8, 0.6), 1.7, uTime, dist, n);
+    chop(p, vec2(-0.6, 0.9), 1.1, uTime, dist, n);
+    chop(p, vec2(0.95, -0.3), 0.73, uTime, dist, n);
+    chop(p, vec2(-0.2, -1.0), 0.47, uTime, dist, n);
+    chop(p, vec2(0.4, 0.9), 0.31, uTime, dist, n);
+
+    // Rings spreading from where pieces went in, white water where they did.
+    for (int i = 0; i < ${RIPPLES}; i++) {
+      vec4 ring = uRipples[i];
+      if (ring.z < 0.0) continue;
+      vec2 d = p - ring.xy;
+      float rr = length(d) + 0.0001;
+      float front = 0.12 + ring.z * 0.9;
+      float env = exp(-pow((rr - front) * 5.0, 2.0)) * ring.w * exp(-ring.z * 1.2);
+      n.xz += (d / rr) * sin((rr - front) * 30.0) * env * 0.5;
+      churn += ring.w * exp(-ring.z * 3.0) * (1.0 - smoothstep(0.05, 0.3 + ring.z * 0.4, rr));
+    }
+    n = normalize(n);
+    grain = noise(p * 7.0 + vec2(uTime * 0.3, 0.0)) * 0.6 + noise(p * 19.0 - vec2(0.0, uTime * 0.5)) * 0.4;
+  #endif
+
+    // Fresnel: looking down, the water's own colour; towards the horizon,
+    // more and more the sky it mirrors.
+    vec3 v = normalize(cameraPosition - vWorld);
+    float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
+    vec3 sky = mix(uHorizon, uTop, smoothstep(0.0, 0.6, reflect(-v, n).y));
+
+    // Its colour comes from its depth: clear over the sand, bluer as the
+    // bottom falls away, and a little light through the thin crests.
+    float r = islandRadius(p);
+    float depth = max(uLevel - ground(r), 0.0);
+    float deep = 1.0 - exp(-depth * 1.1);
+    vec3 body = mix(uShallow, uDeep, deep);
+    body += uShallow * 0.18 * clamp(vHeight / 0.04, 0.0, 1.0);
+    vec3 c = mix(body, sky, fresnel);
+
+    // The sun: a hard glint off facets turned just right, a sheen round it.
+    float nh = max(dot(n, normalize(uSun + v)), 0.0);
+    c += uGlint * (pow(nh, 900.0) * 2.2 + pow(nh, 80.0) * 0.12);
+
+    // Foam where the water meets the island or the tower, on the highest
+    // crests, and where something went in, broken up so it reads as foam.
+    float foam = 0.0;
+    if (uShore > 0.0) {
+      float s = r - uShore;
+      float surge = smoothstep(0.6, 1.0, sin(s * 26.0 - uTime * 2.4)) * (1.0 - smoothstep(0.03, 0.3, s));
+      foam = max(1.0 - smoothstep(0.0, 0.08, s), surge * 0.45);
+    }
+    if (uColumn.z > 0.0) {
+      float s = length(max(abs(p - uColumn.xy) - uColumn.zw, 0.0));
+      foam = max(foam, 1.0 - smoothstep(0.0, 0.07, s));
+    }
+    foam *= smoothstep(0.35, 0.75, grain + foam * 0.2);
+    foam = max(foam, smoothstep(0.045, 0.07, vHeight) * smoothstep(0.62, 0.8, grain) * 0.8);
+    foam = max(foam, clamp(churn, 0.0, 1.0) * smoothstep(0.2, 0.5, grain));
+    foam = clamp(foam, 0.0, 1.0);
+    c = mix(c, uFoam, foam * 0.75);
+
     // The sea is a wide pool round the island that fades into the sky, so
     // the sky shows past it the way the tower floats in it.
-    float r = length(vWorld.xz);
-    vec3 c = mix(uShallow, uDeep, smoothstep(0.0, 6.0, r));
-    float edge = smoothstep(uNear, uFar, r);
-    // Wave shading only up close; far off it would read as blotches.
-    c += vec3(vWave * 1.6 * (1.0 - smoothstep(0.0, uNear, r)));
+    float edge = smoothstep(uNear, uFar, length(vWorld.xz));
     c = mix(c, uHorizon, edge);
-    gl_FragColor = vec4(c, uOpacity * (1.0 - edge));
+    float alpha = max(mix(0.6, 0.95, deep), max(fresnel, foam));
+    gl_FragColor = vec4(c, alpha * (1.0 - edge));
     #include <colorspace_fragment>
   }
 `;
 
-export function createScene(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// quality: "high", or "low" for a slower device: one pixel per CSS pixel,
+// no antialiasing, and plainer water on a coarser mesh. Antialiasing is
+// fixed when the renderer is made, so a change to it waits for a reload.
+export function createScene(canvas, { quality = "high" } = {}) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== "low", powerPreference: "high-performance" });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.autoClear = false;
 
@@ -210,12 +463,21 @@ export function createScene(canvas) {
     uDeep: { value: new THREE.Color() },
     uShallow: { value: new THREE.Color() },
     uHorizon: { value: new THREE.Color() },
+    uTop: { value: new THREE.Color() },
+    uFoam: { value: new THREE.Color() },
+    uSun: { value: GLINT },
+    uGlint: { value: 1 },
     uNear: { value: 14 },
     uFar: { value: 70 },
-    uOpacity: { value: 0.86 },
+    uLevel: { value: 0 },
+    uShore: { value: -1 },
+    uColumn: { value: new THREE.Vector4(0, 0, -1, -1) },
+    uRipples: { value: Array.from({ length: RIPPLES }, () => new THREE.Vector4(0, 0, -1, 0)) },
   };
+  // About a unit between vertices, enough for the long waves; the short
+  // ones are only in the shading. setQuality() makes it.
   const water = new THREE.Mesh(
-    new THREE.PlaneGeometry(260, 260, 160, 160),
+    new THREE.BufferGeometry(),
     new THREE.ShaderMaterial({
       uniforms: waterUniforms,
       vertexShader: WATER_VERTEX,
@@ -230,14 +492,14 @@ export function createScene(canvas) {
 
   /* ---- the island and the base ---- */
   const island = new THREE.Group();
-  const islandTop = ISLAND_TOP * S;
+  const islandTop = ISLAND_Y;
   const sandMat = new THREE.MeshLambertMaterial({ color: 0xe9d7a8, flatShading: true });
-  const sand = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 3.2, 3, 10, 1), sandMat);
-  sand.position.y = islandTop - 1.5 - 0.06;
+  const sand = new THREE.Mesh(new THREE.CylinderGeometry(SAND_TOP_R, SAND_BOTTOM_R, SAND_HEIGHT, 10, 1), sandMat);
+  sand.position.y = SAND_TOP_Y - SAND_HEIGHT / 2;
   island.add(sand);
   const grassMat = new THREE.MeshLambertMaterial({ color: 0x9fcf8f, flatShading: true });
-  const grass = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 2.05, 0.14, 10, 1), grassMat);
-  grass.position.y = islandTop - 0.02;
+  const grass = new THREE.Mesh(new THREE.CylinderGeometry(1.75, GRASS_R, 0.14, 10, 1), grassMat);
+  grass.position.y = GRASS_TOP_Y - 0.07;
   island.add(grass);
   const rockMat = new THREE.MeshLambertMaterial({ color: 0xb9b4ad, flatShading: true });
   [[1.9, 0.6, 0.22], [-1.4, 1.5, 0.3], [0.4, -2.0, 0.18], [-2.0, -0.9, 0.26], [1.3, -1.5, 0.2]].forEach(([x, z, r]) => {
@@ -246,6 +508,67 @@ export function createScene(canvas) {
     rock.rotation.set(x, z, r * 10);
     island.add(rock);
   });
+
+  // Grass tufts and flowers on the grass, scattered the same way every
+  // time and clear of the base column, each turned, sized and shaded a
+  // little differently. They sway in the wind, more at the tips, each a
+  // little out of step with the next.
+  const swayTime = { value: 0 };
+  const foliageMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  foliageMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSwayTime = swayTime;
+    shader.vertexShader = `uniform float uSwayTime;\n${shader.vertexShader}`.replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec2 root = instanceMatrix[3].xz;
+      #else
+        vec2 root = vec2(0.0);
+      #endif
+      float sway = sin(uSwayTime * 1.7 + root.x * 3.1 + root.y * 2.3) * 0.12 * max(position.y, 0.0);
+      transformed.x += sway;
+      transformed.z += sway * 0.6;`
+    );
+  };
+  {
+    let seed = 20261101;
+    const rand = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
+    // Anywhere on the ring of grass round the base, evenly spread.
+    const spot = () => {
+      for (;;) {
+        const a = rand() * Math.PI * 2;
+        const r = Math.sqrt(0.62 ** 2 + rand() * (1.55 ** 2 - 0.62 ** 2));
+        const x = Math.cos(a) * r;
+        const z = Math.sin(a) * r;
+        if (Math.max(Math.abs(x), Math.abs(z)) > 0.62) return [x, z];
+      }
+    };
+    const o = new THREE.Object3D();
+    const set = (mesh, i, size) => {
+      const [x, z] = spot();
+      o.position.set(x, GRASS_TOP_Y, z);
+      o.rotation.set((rand() - 0.5) * 0.2, rand() * Math.PI * 2, (rand() - 0.5) * 0.2);
+      o.scale.setScalar(size);
+      o.updateMatrix();
+      mesh.setMatrixAt(i, o.matrix);
+    };
+
+    const TUFTS = 110;
+    const tufts = new THREE.InstancedMesh(tuftGeometry(rand), foliageMat, TUFTS);
+    const shade = new THREE.Color();
+    for (let i = 0; i < TUFTS; i++) {
+      set(tufts, i, 0.75 + rand() * 0.6);
+      tufts.setColorAt(i, shade.setHSL(0, 0, 0.85 + rand() * 0.15));
+    }
+    island.add(tufts);
+
+    const EACH = 7;
+    FLOWERS.forEach(([petal, middle]) => {
+      const flowers = new THREE.InstancedMesh(flowerGeometry(petal, middle), foliageMat, EACH);
+      for (let i = 0; i < EACH; i++) set(flowers, i, 1 + rand() * 0.5);
+      island.add(flowers);
+    });
+  }
   scene.add(island);
 
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -394,9 +717,12 @@ export function createScene(canvas) {
     skyUniforms.uBottom.value.copy(look.bottom);
     scene.fog.color.copy(look.horizon);
     waterUniforms.uHorizon.value.copy(look.horizon);
+    waterUniforms.uTop.value.copy(look.top);
     if (look.dark) {
       waterUniforms.uDeep.value.setHSL(0.58, 0.45, 0.15);
       waterUniforms.uShallow.value.setHSL(0.52, 0.42, 0.24);
+      waterUniforms.uFoam.value.setHSL(0.55, 0.2, 0.5);
+      waterUniforms.uGlint.value = 0.35;
       skyUniforms.uGlow.value = 0.08;
       hemi.intensity = 1.0;
       sun.intensity = 1.2;
@@ -404,9 +730,12 @@ export function createScene(canvas) {
       cloudMat.opacity = 0.12;
       sandMat.color.setHex(0xa89a78);
       grassMat.color.setHex(0x6f9a62);
+      foliageMat.color.setScalar(0.7);
     } else {
       waterUniforms.uDeep.value.setHSL(0.55, 0.5, 0.55);
       waterUniforms.uShallow.value.setHSL(0.49, 0.5, 0.7);
+      waterUniforms.uFoam.value.setRGB(1, 1, 1).lerp(look.horizon, 0.12);
+      waterUniforms.uGlint.value = 1;
       skyUniforms.uGlow.value = 0.35;
       hemi.intensity = 1.5;
       sun.intensity = 1.7;
@@ -414,12 +743,72 @@ export function createScene(canvas) {
       cloudMat.opacity = 0.42;
       sandMat.color.setHex(0xe9d7a8);
       grassMat.color.setHex(0x9fcf8f);
+      foliageMat.color.setScalar(1);
     }
     hemi.color.copy(look.top).lerp(new THREE.Color(0xffffff), 0.6);
   }
 
+  /* ---- quality ---- */
+  let drawnAs = null;
+
+  function setQuality(value) {
+    const low = value === "low";
+    if (drawnAs === (low ? "low" : "high")) return;
+    drawnAs = low ? "low" : "high";
+    renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+    water.geometry.dispose();
+    water.geometry = new THREE.PlaneGeometry(260, 260, low ? 96 : 256, low ? 96 : 256);
+    water.material.defines = low ? { LOW: 1 } : {};
+    water.material.needsUpdate = true;
+  }
+
+  /* ---- where the water meets things ---- */
+
+  // The island's waterline, as a radius of its ten-sided outline, or -1
+  // once the grass is under.
+  function shoreRadius(level) {
+    if (level >= GRASS_TOP_Y) return -1;
+    if (level >= SAND_TOP_Y) return GRASS_R;
+    const down = Math.min(SAND_HEIGHT, SAND_TOP_Y - level);
+    return SAND_TOP_R + ((SAND_BOTTOM_R - SAND_TOP_R) * down) / SAND_HEIGHT;
+  }
+
+  // The footprint of the tower at the waterline, for the foam round it:
+  // the base column, or the layer the water has reached.
+  function waterline(layers, count, level, out) {
+    out.set(0, 0, -1, -1);
+    if (level < GRASS_TOP_Y) return;
+    if (level < 0) {
+      out.set(0, 0, 0.5, 0.5);
+      return;
+    }
+    const n = Math.floor(level / (LAYER * S)) + 1;
+    const layer = layers[n];
+    if (n < count && layer) out.set(layer.x * S, layer.z * S, (layer.sx * S) / 2, (layer.sz * S) / 2);
+  }
+
+  // The latest few places pieces went in, and how long ago, in seconds.
+  function ripples(view) {
+    const out = waterUniforms.uRipples.value;
+    let used = 0;
+    for (const p of view.pieces ?? []) {
+      for (const hit of p.fall.impacts) {
+        if (used === RIPPLES) break;
+        if (hit.kind !== "water") continue;
+        const age = view.t - hit.t;
+        if (age < 0 || age >= RIPPLE_MS) continue;
+        const at = fallAt(p.fall, hit.t, view.water);
+        if (at) out[used++].set(at.x * S, at.z * S, age / 1000, 0.4 + 0.6 * hit.strength);
+      }
+    }
+    for (let i = used; i < RIPPLES; i++) out[i].set(0, 0, -1, 0);
+  }
+
   /* ---- camera ---- */
   const cam = { y: 0.4, dist: 8, cover: 0, ready: false };
+  // The free camera's offsets as drawn, easing towards the ones asked for.
+  const orb = { ...NO_ORBIT };
+  const look3 = new THREE.Vector3();
   let width = 1;
   let height = 1;
 
@@ -459,6 +848,7 @@ export function createScene(canvas) {
   //              pulls back so the whole tower fits there
   //   dt         real seconds since the last frame
   //   clock      real seconds, for the waves and the clouds
+  //   orbit      the replay's free camera, js/freecam.js, or null
   function draw(view) {
     resize();
     const { t, seedNum, layers, count, overview = 0, cover = 0, dt = 0.016, clock = 0 } = view;
@@ -521,8 +911,14 @@ export function createScene(canvas) {
     for (let i = rings; i < ringPool.length; i++) ringPool[i].frame.visible = ringPool[i].plate.visible = false;
 
     // Water.
-    water.position.y = view.water * S;
+    const level = view.water * S;
+    water.position.y = level;
     waterUniforms.uTime.value = clock;
+    swayTime.value = clock;
+    waterUniforms.uLevel.value = level;
+    waterUniforms.uShore.value = shoreRadius(level);
+    waterline(layers, count, level, waterUniforms.uColumn.value);
+    ripples(view);
 
     // Camera: follow the top, or pull back to show the whole tower in the
     // part of the screen no panel covers.
@@ -543,16 +939,41 @@ export function createScene(canvas) {
     cam.dist += (wantDist - cam.dist) * ease;
     cam.cover += (Math.min(0.7, cover) - cam.cover) * (1 - Math.exp(-dt * 6));
 
-    const target = new THREE.Vector3(0, cam.y, 0);
-    camera.position.copy(target).addScaledVector(DIR, cam.dist);
+    // The replay's free camera turns, tilts, zooms and lifts that, eased,
+    // and eases back to it when it is let go.
+    const want = view.orbit ?? NO_ORBIT;
+    const glide = 1 - Math.exp(-dt * 12);
+    orb.yaw += wrapAngle(want.yaw - orb.yaw) * glide;
+    orb.pitch += (want.pitch - orb.pitch) * glide;
+    orb.zoom += (want.zoom - orb.zoom) * glide;
+    orb.lift += (want.lift - orb.lift) * glide;
+
+    const dist = cam.dist * orb.zoom;
+    const screen = 2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * dist;
+    // Lifted no further than from the island to just over the top. The
+    // clamped lift goes back into the orbit, so dragging back from past an
+    // end moves the camera at once.
+    const lo = islandTop - 0.5;
+    const hi = Math.max(lo, top + 1);
+    const ty = Math.min(hi, Math.max(lo, cam.y + orb.lift * screen));
+    if (view.orbit && ty !== cam.y + orb.lift * screen) {
+      orb.lift = (ty - cam.y) / screen;
+      view.orbit.lift = orb.lift;
+    }
+    const rise = BASE_RISE + orb.pitch;
+    const round = BASE_ROUND + orb.yaw;
+    look3.set(Math.cos(rise) * Math.sin(round), Math.sin(rise), Math.cos(rise) * Math.cos(round));
+
+    const target = new THREE.Vector3(0, ty, 0);
+    camera.position.copy(target).addScaledVector(look3, dist);
     camera.lookAt(target);
     if (cam.cover > 0.002) camera.setViewOffset(width, height, 0, (height * cam.cover) / 2, width, height);
     else camera.clearViewOffset();
 
-    scene.fog.near = cam.dist * 2.5;
-    scene.fog.far = cam.dist * 9 + 30;
-    waterUniforms.uNear.value = 5 + cam.dist * 0.4;
-    waterUniforms.uFar.value = 14 + cam.dist * 1.1;
+    scene.fog.near = dist * 2.5;
+    scene.fog.far = dist * 9 + 30;
+    waterUniforms.uNear.value = 5 + dist * 0.4;
+    waterUniforms.uFar.value = 14 + dist * 1.1;
 
     sun.position.set(target.x - 2.2, target.y + 5, target.z + 3.4);
     sun.target.position.copy(target);
@@ -576,6 +997,7 @@ export function createScene(canvas) {
   }
 
   readTheme();
+  setQuality(quality);
 
-  return { draw, readTheme, snapCamera, resize: () => { width = 0; resize(); } };
+  return { draw, readTheme, snapCamera, setQuality, resize: () => { width = 0; resize(); } };
 }

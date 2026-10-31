@@ -66,6 +66,13 @@ body {
   touch-action: none;
   cursor: pointer;
 }
+/* A replay showing: the picture can be dragged round, js/freecam.js. */
+.stage.free {
+  cursor: grab;
+}
+.stage.free.dragging {
+  cursor: grabbing;
+}
 .no-webgl {
   position: fixed;
   inset: 40% 20px auto;
@@ -675,6 +682,10 @@ body {
 .replay-label {
   min-height: 1.3em;
   font-size: 0.85rem;
+  color: var(--muted);
+}
+.replay-hint {
+  font-size: 0.8rem;
   color: var(--muted);
 }
 
