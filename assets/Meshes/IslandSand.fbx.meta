@@ -1,0 +1,33 @@
+fileFormatVersion: 2
+guid: d8d003fa8c0e0a15dd2d01d9a5515526
+ModelImporter:
+  serializedVersion: 22200
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Sand
+    second: {fileID: 2100000, guid: eb09ff92dcafae3c1dc9d7eb63d58550, type: 2}
+  materials:
+    materialImportMode: 2
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 1
+  animations:
+    importAnimation: 0
+  meshes:
+    globalScale: 1
+    useFileScale: 1
+    importBlendShapes: 0
+    importVisibility: 0
+    importCameras: 0
+    importLights: 0
+    addColliders: 0
+    indexFormat: 0
+  tangentSpace:
+    normalImportMode: 0
+  importAnimation: 0
+  userData:
+  assetBundleName:
+  assetBundleVariant:

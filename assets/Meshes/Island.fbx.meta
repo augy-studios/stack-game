@@ -1,0 +1,53 @@
+fileFormatVersion: 2
+guid: aeea648997edacc1eb14820e836d6636
+ModelImporter:
+  serializedVersion: 22200
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Block
+    second: {fileID: 2100000, guid: d796dd2fe89bed18f81dfac4ed674e40, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Sand
+    second: {fileID: 2100000, guid: eb09ff92dcafae3c1dc9d7eb63d58550, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Grass
+    second: {fileID: 2100000, guid: b85c66fb6a677f95645a22e011e3fe8a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Rock
+    second: {fileID: 2100000, guid: 8ba1fd90395b0b57bab9244e2711b30e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: FoliageIsland
+    second: {fileID: 2100000, guid: b243e9aba0de48213d87b8401217c9a4, type: 2}
+  materials:
+    materialImportMode: 2
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 1
+  animations:
+    importAnimation: 0
+  meshes:
+    globalScale: 1
+    useFileScale: 1
+    importBlendShapes: 0
+    importVisibility: 0
+    importCameras: 0
+    importLights: 0
+    addColliders: 0
+    indexFormat: 0
+  tangentSpace:
+    normalImportMode: 0
+  importAnimation: 0
+  userData:
+  assetBundleName:
+  assetBundleVariant:

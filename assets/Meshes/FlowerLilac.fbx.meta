@@ -1,0 +1,33 @@
+fileFormatVersion: 2
+guid: 0a818765d1f987187b3046b5814e5ca4
+ModelImporter:
+  serializedVersion: 22200
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Foliage
+    second: {fileID: 2100000, guid: a275e7c22601932854ff41e742f672cd, type: 2}
+  materials:
+    materialImportMode: 2
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 1
+  animations:
+    importAnimation: 0
+  meshes:
+    globalScale: 1
+    useFileScale: 1
+    importBlendShapes: 0
+    importVisibility: 0
+    importCameras: 0
+    importLights: 0
+    addColliders: 0
+    indexFormat: 0
+  tangentSpace:
+    normalImportMode: 0
+  importAnimation: 0
+  userData:
+  assetBundleName:
+  assetBundleVariant:

@@ -1,0 +1,33 @@
+fileFormatVersion: 2
+guid: 76e9ee1761444c3249bb2b358b916657
+ModelImporter:
+  serializedVersion: 22200
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: SplashCrown
+    second: {fileID: 2100000, guid: eeb7e977d8619519a79f0699a4cc55ad, type: 2}
+  materials:
+    materialImportMode: 2
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 1
+  animations:
+    importAnimation: 0
+  meshes:
+    globalScale: 1
+    useFileScale: 1
+    importBlendShapes: 0
+    importVisibility: 0
+    importCameras: 0
+    importLights: 0
+    addColliders: 0
+    indexFormat: 0
+  tangentSpace:
+    normalImportMode: 0
+  importAnimation: 0
+  userData:
+  assetBundleName:
+  assetBundleVariant:

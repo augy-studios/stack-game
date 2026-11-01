@@ -436,6 +436,17 @@ body {
   color: var(--on-brand);
 }
 .btn-primary:hover { background: var(--brand-fill-strong); }
+/* In light mode the pale brand fill is close to the background, and only
+   its hue sets it apart, which colour blind eyes may not see. A dark ring
+   marks these buttons by contrast instead. Inset, so nothing moves. */
+:root[data-mode="light"] :is(
+  .mode-btn[aria-checked="true"],
+  .mode-btn.active,
+  .btn-primary,
+  .replay-controls .play-btn
+) {
+  box-shadow: inset 0 0 0 1.5px var(--brand-ink);
+}
 .btn-quiet {
   color: var(--ink);
   border: 1px solid var(--surface-border);
