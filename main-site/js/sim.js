@@ -30,6 +30,7 @@ export const axisOf = (layer) => (layer % 2 === 1 ? "x" : "z");
 export function newGame(seed, settings) {
   const clean = cleanSeed(seed);
   if (!clean) throw new Error("bad seed");
+  const start = difficultyOf(settings.difficulty).start;
   return {
     seed: clean,
     seedNum: seedNumber(clean),
@@ -38,9 +39,10 @@ export function newGame(seed, settings) {
       turn: cleanTurn(settings.turn),
       game: cleanGameLimit(settings.game),
     },
-    // Placed layers, the base first. x and z are centres; sx and sz sizes.
-    // Centres can sit on a half unit, which doubles hold exactly.
-    layers: [{ n: 0, x: 0, z: 0, sx: BASE, sz: BASE, t: 0 }],
+    // Placed layers, the base first, at the difficulty's starting size.
+    // x and z are centres; sx and sz sizes. Centres can sit on a half unit,
+    // which doubles hold exactly.
+    layers: [{ n: 0, x: 0, z: 0, sx: start, sz: start, t: 0 }],
     // One entry per drop that landed; see drop() for the fields.
     drops: [],
     // The slab that missed, if one did.
@@ -99,8 +101,9 @@ function drop(state, t, auto) {
     state.perfects += 1;
     state.bestCombo = Math.max(state.bestCombo, state.combo);
 
-    // A long enough run of perfects grows the slab back towards full size,
-    // on a side the seed picks for this layer.
+    // A long enough run of perfects grows the slab back towards BASE, on a
+    // side the seed picks for this layer. Never past it: on Easy, a slab
+    // still bigger than BASE does not grow at all.
     if (state.combo >= d.combo) {
       const want = Math.min(d.grow * (state.combo - d.combo + 1), 3 * d.grow);
       const pick = draw(state.seedNum, n, 7, 4);

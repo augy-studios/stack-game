@@ -8,6 +8,10 @@
 // acceleration is thousandths of a unit per second per second, so nothing
 // ever needs a fraction.
 
+// BASE is full size: Medium's starting slab, and the size a run of perfects
+// grows a slab back towards on every difficulty. Easy starts above it, so
+// its slab only grows back once cuts take it under; Hard starts a little
+// below it, so a good run can grow its slab past where it began.
 export const BASE = 1000;
 export const LAYER = 200;
 // How far the moving slab swings either side of the one below it.
@@ -22,7 +26,11 @@ export const ISLAND_TOP = -1000;
 export const MAX_TAPS = 20000;
 export const MAX_GAME_MS = 6 * 60 * 60 * 1000;
 
-// Per difficulty:
+// Per difficulty. The starting slab is what sets them apart most; the rest
+// differ only a little.
+//   start                        the base's size, and so the first slab's,
+//                                square; growing never takes a slab past
+//                                BASE, whatever this is
 //   speed0, speedStep, speedMax  the slab's speed for layer n is
 //                                speed0 + speedStep * (n - 1), up to speedMax
 //   perfect                      how far off a drop may be and still count
@@ -33,20 +41,22 @@ export const MAX_GAME_MS = 6 * 60 * 60 * 1000;
 //                                always wins
 //   combo, grow                  from this many perfects in a row, each
 //                                perfect also grows the slab back towards
-//                                full size by grow units, more as the combo
+//                                BASE by grow units, more as the combo
 //                                goes on
 //   percent                      what the game's points count for
 export const DIFFICULTIES = {
   easy: {
     label: "Easy",
-    speed0: 900, speedStep: 10, speedMax: 2600,
-    perfect: 60,
-    water0: 65, waterAccel: 900,
-    combo: 3, grow: 40,
+    start: 1400,
+    speed0: 1100, speedStep: 12, speedMax: 3000,
+    perfect: 48,
+    water0: 80, waterAccel: 1200,
+    combo: 4, grow: 30,
     percent: 75,
   },
   medium: {
     label: "Medium",
+    start: 1000,
     speed0: 1200, speedStep: 14, speedMax: 3200,
     perfect: 42,
     water0: 90, waterAccel: 1333,
@@ -55,13 +65,16 @@ export const DIFFICULTIES = {
   },
   hard: {
     label: "Hard",
-    speed0: 1600, speedStep: 20, speedMax: 4000,
-    perfect: 30,
-    water0: 125, waterAccel: 1800,
-    combo: 5, grow: 25,
+    start: 900,
+    speed0: 1300, speedStep: 16, speedMax: 3400,
+    perfect: 38,
+    water0: 100, waterAccel: 1450,
+    combo: 4, grow: 30,
     percent: 150,
   },
 };
+// The biggest base any difficulty starts with, for the scene to leave room.
+export const MAX_START = Math.max(...Object.values(DIFFICULTIES).map((d) => d.start));
 export const DEFAULT_DIFFICULTY = "medium";
 
 // Time limits, in seconds, and the percentage each counts for. A turn limit

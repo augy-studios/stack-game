@@ -4,13 +4,13 @@
 // It draws whatever it is handed and keeps no game state of its own, so the
 // live game and the replay drive it the same way, through draw(). Units in
 // are the game's (js/rules.js); the world is a thousandth of that, so the
-// base is one world unit across.
+// full-size base (Medium's) is one world unit across.
 //
 // The sky is the one place in the app with a gradient. It is the game's
 // scenery, inside the canvas, and shifts colour as the tower climbs.
 
 import * as THREE from "three";
-import { LAYER, ISLAND_TOP } from "./rules.js";
+import { LAYER, ISLAND_TOP, MAX_START } from "./rules.js";
 import { fallAt } from "./fall.js";
 
 const S = 1 / 1000;
@@ -571,14 +571,16 @@ export function createScene(canvas, { quality = "high" } = {}) {
   {
     let seed = 20261101;
     const rand = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
-    // Anywhere on the ring of grass round the base, evenly spread.
+    // Anywhere on the ring of grass round the base, evenly spread, clear of
+    // the biggest base any difficulty starts with.
+    const clear = (MAX_START * S) / 2 + 0.12;
     const spot = () => {
       for (;;) {
         const a = rand() * Math.PI * 2;
-        const r = Math.sqrt(0.62 ** 2 + rand() * (1.55 ** 2 - 0.62 ** 2));
+        const r = Math.sqrt(clear ** 2 + rand() * (1.55 ** 2 - clear ** 2));
         const x = Math.cos(a) * r;
         const z = Math.sin(a) * r;
-        if (Math.max(Math.abs(x), Math.abs(z)) > 0.62) return [x, z];
+        if (Math.max(Math.abs(x), Math.abs(z)) > clear) return [x, z];
       }
     };
     const o = new THREE.Object3D();
@@ -656,6 +658,8 @@ export function createScene(canvas, { quality = "high" } = {}) {
       towerLayers = layers;
       towerShown = 0;
       baseMat.color.copy(layerColour(seedNum, 0, tmpColour));
+      // The base column is as wide as the difficulty's starting slab.
+      base.scale.set(layers[0].sx * S, -islandTop, layers[0].sz * S);
     }
     const want = Math.max(0, count - 1);
     if (want > towerShown) {
@@ -870,7 +874,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     out.set(0, 0, -1, -1);
     if (level < GRASS_TOP_Y) return;
     if (level < 0) {
-      out.set(0, 0, 0.5, 0.5);
+      out.set(0, 0, (layers[0].sx * S) / 2, (layers[0].sz * S) / 2);
       return;
     }
     const n = Math.floor(level / (LAYER * S)) + 1;

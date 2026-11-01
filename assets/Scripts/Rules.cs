@@ -11,6 +11,8 @@ namespace UwuStack
     // nothing here draws or plays from it.
     public static class Rules
     {
+        // Full size: Medium's starting slab, and what a run of perfects
+        // grows a slab back towards on every difficulty.
         public const int Base = 1000;
         public const int Layer = 200;
 
@@ -22,16 +24,19 @@ namespace UwuStack
         public const int WaterStart = -1600;
         public const int IslandTop = -1000;
 
+        // start: the base's size, square, and so the first slab's. The
+        //   starting slab is what sets the difficulties apart most.
         // speed0, speedStep, speedMax: the slab's speed for layer n is
         //   speed0 + speedStep * (n - 1), up to speedMax, in units a second.
         // perfect: how far off a drop may be and still count as perfect.
         // water0, waterAccel: the water rises at water0 at first, and faster
         //   by waterAccel thousandths a second every second.
         // combo, grow: from this many perfects in a row, each perfect grows
-        //   the slab back towards full size by grow units.
+        //   the slab back towards Base by grow units, never past it.
         public sealed class Difficulty
         {
             public string Label;
+            public int Start;
             public int Speed0, SpeedStep, SpeedMax;
             public int Perfect;
             public int Water0, WaterAccel;
@@ -40,20 +45,20 @@ namespace UwuStack
 
         public static readonly Difficulty Easy = new Difficulty
         {
-            Label = "Easy", Speed0 = 900, SpeedStep = 10, SpeedMax = 2600, Perfect = 60,
-            Water0 = 65, WaterAccel = 900, Combo = 3, Grow = 40,
+            Label = "Easy", Start = 1400, Speed0 = 1100, SpeedStep = 12, SpeedMax = 3000, Perfect = 48,
+            Water0 = 80, WaterAccel = 1200, Combo = 4, Grow = 30,
         };
 
         public static readonly Difficulty Medium = new Difficulty
         {
-            Label = "Medium", Speed0 = 1200, SpeedStep = 14, SpeedMax = 3200, Perfect = 42,
+            Label = "Medium", Start = 1000, Speed0 = 1200, SpeedStep = 14, SpeedMax = 3200, Perfect = 42,
             Water0 = 90, WaterAccel = 1333, Combo = 4, Grow = 30,
         };
 
         public static readonly Difficulty Hard = new Difficulty
         {
-            Label = "Hard", Speed0 = 1600, SpeedStep = 20, SpeedMax = 4000, Perfect = 30,
-            Water0 = 125, WaterAccel = 1800, Combo = 5, Grow = 25,
+            Label = "Hard", Start = 900, Speed0 = 1300, SpeedStep = 16, SpeedMax = 3400, Perfect = 38,
+            Water0 = 100, WaterAccel = 1450, Combo = 4, Grow = 30,
         };
 
         public static int SpeedFor(Difficulty d, int layer)
