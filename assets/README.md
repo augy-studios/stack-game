@@ -99,10 +99,6 @@ code, not assets.
 - **Foliage in `Island.fbx`** keeps its sway in the UVs: uv0 is each
   plant's root and uv1 how far it moves. Don't let anything regenerate
   those UVs (lightmap UVs go in uv2, which is fine).
-- **The checked-in `Island.fbx`** still scatters its plants clear of a
-  1-unit base. Easy's base is 1.4 across, so a few plants are hidden inside
-  it until `export.mjs` is run again, which scatters them clear of the
-  widest base as the web game does.
 
 ## Not checked in Unity
 
