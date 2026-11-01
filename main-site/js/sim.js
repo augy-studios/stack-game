@@ -19,7 +19,7 @@
 
 import {
   BASE, LAYER,
-  difficultyOf, cleanDifficulty, cleanTurn, cleanGameLimit,
+  difficultyOf, cleanDifficulty, cleanTurn, cleanGameLimit, cleanRules,
   speedFor, swingAt, waterOverAt,
   accuracyPercent, speedPercent, dropPoints, gameScore,
 } from "./rules.js";
@@ -27,14 +27,21 @@ import { cleanSeed, seedNumber, draw } from "./seed.js";
 
 export const axisOf = (layer) => (layer % 2 === 1 ? "x" : "z");
 
+// The game's difficulty, under the rules it is played by.
+export const difficultyOfGame = (state) => difficultyOf(state.settings.difficulty, state.settings.rules);
+
 export function newGame(seed, settings) {
   const clean = cleanSeed(seed);
   if (!clean) throw new Error("bad seed");
-  const start = difficultyOf(settings.difficulty).start;
+  const rules = cleanRules(settings.rules);
+  const start = difficultyOf(settings.difficulty, rules).start;
   return {
     seed: clean,
     seedNum: seedNumber(clean),
     settings: {
+      // The rules version, js/rules.js's RULES_VERSION unless replaying a
+      // game played under older ones.
+      rules,
       difficulty: cleanDifficulty(settings.difficulty),
       turn: cleanTurn(settings.turn),
       game: cleanGameLimit(settings.game),
@@ -66,7 +73,7 @@ export function slabAt(state, t) {
   const n = state.layers.length;
   const prev = state.layers[n - 1];
   const axis = axisOf(n);
-  const speed = speedFor(difficultyOf(state.settings.difficulty), n);
+  const speed = speedFor(difficultyOfGame(state), n);
   const ms = Math.max(0, t - state.spawnAt);
   const raw = swingAt(speed, ms);
   return {
@@ -84,7 +91,7 @@ export function slabAt(state, t) {
 
 // Drops the swinging slab at `t`. Returns the drop, or the miss.
 function drop(state, t, auto) {
-  const d = difficultyOf(state.settings.difficulty);
+  const d = difficultyOfGame(state);
   const slab = slabAt(state, t);
   const prev = state.layers[slab.n - 1];
   const { n, axis, raw, speed, ms } = slab;
@@ -168,7 +175,7 @@ function drop(state, t, auto) {
 export function advance(state, t, strict = false) {
   const made = [];
   const until = strict ? t - 1 : t;
-  const d = difficultyOf(state.settings.difficulty);
+  const d = difficultyOfGame(state);
   const { turn, game } = state.settings;
 
   while (!state.over && state.t < until) {
@@ -217,12 +224,12 @@ export function finish(state, t) {
 
 export const scoreOf = (state, t = state.over?.at ?? state.t) => gameScore(state.points, state.settings, t);
 
-// Plays a whole record, js/record.js's shape. Returns { state } or
-// { error } naming what was wrong with it.
+// Plays a whole record, js/record.js's shape, under the rules its v names.
+// Returns { state } or { error } naming what was wrong with it.
 export function runRecord(record) {
   let state;
   try {
-    state = newGame(record.seed, record);
+    state = newGame(record.seed, { ...record, rules: record.v });
   } catch {
     return { error: "seed" };
   }

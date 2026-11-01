@@ -39,6 +39,7 @@ namespace UwuStack
         Material material;
         readonly Vector4[] ripples = new Vector4[Ripples];
         Vector4 column = new Vector4(0, 0, -1, -1);
+        Vector2 baseHalf = new Vector2(0.5f, 0.5f);
 
         // The island's grass and sand, as Island.fbx has them.
         const float GrassR = 2.05f;
@@ -74,6 +75,13 @@ namespace UwuStack
             column = new Vector4(centre.x, centre.z, halfX, halfZ);
         }
 
+        // The base column's half sizes in world units, for the foam round it
+        // before the water reaches the tower. BaseColumn sets it.
+        public void SetBase(float halfX, float halfZ)
+        {
+            baseHalf = new Vector2(halfX, halfZ);
+        }
+
         public void ClearColumn()
         {
             column = new Vector4(0, 0, -1, -1);
@@ -98,7 +106,7 @@ namespace UwuStack
             // meets.
             Vector4 col = column;
             if (level < GrassTopY) col = new Vector4(0, 0, -1, -1);
-            else if (level < 0 && column.z < 0) col = new Vector4(0, 0, 0.5f, 0.5f);
+            else if (level < 0 && column.z < 0) col = new Vector4(0, 0, baseHalf.x, baseHalf.y);
 
             for (int i = 0; i < Ripples; i++)
             {

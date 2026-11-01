@@ -77,6 +77,38 @@ export const DIFFICULTIES = {
 export const MAX_START = Math.max(...Object.values(DIFFICULTIES).map((d) => d.start));
 export const DEFAULT_DIFFICULTY = "medium";
 
+// The rules change now and then, and a game must always replay under the
+// rules it was played by, so every version stays here. A record's v names
+// its version (js/record.js). Version 1 started every difficulty on a full
+// size base and set them apart by speed, water and the perfect window.
+export const RULES_VERSION = 2;
+const DIFFICULTIES_V1 = {
+  easy: {
+    label: "Easy",
+    start: 1000,
+    speed0: 900, speedStep: 10, speedMax: 2600,
+    perfect: 60,
+    water0: 65, waterAccel: 900,
+    combo: 3, grow: 40,
+    percent: 75,
+  },
+  medium: DIFFICULTIES.medium,
+  hard: {
+    label: "Hard",
+    start: 1000,
+    speed0: 1600, speedStep: 20, speedMax: 4000,
+    perfect: 30,
+    water0: 125, waterAccel: 1800,
+    combo: 5, grow: 25,
+    percent: 150,
+  },
+};
+const BY_VERSION = { 1: DIFFICULTIES_V1, 2: DIFFICULTIES };
+
+export function cleanRules(value) {
+  return Object.hasOwn(BY_VERSION, String(value)) ? Number(value) : RULES_VERSION;
+}
+
 // Time limits, in seconds, and the percentage each counts for. A turn limit
 // drops a slab by itself once it has been swinging that long, wherever it
 // is; it counts on every drop. A game limit ends the game when it runs out;
@@ -94,7 +126,12 @@ export const SECOND_PASS = 110;
 export const SURVIVAL_STEP_MS = 6000;
 export const SURVIVAL_MAX = 50;
 
-export const difficultyOf = (id) => DIFFICULTIES[id] ?? DIFFICULTIES[DEFAULT_DIFFICULTY];
+// A difficulty's numbers under a version of the rules, the current one if
+// none is given.
+export function difficultyOf(id, rules = RULES_VERSION) {
+  const set = BY_VERSION[cleanRules(rules)];
+  return set[id] ?? set[DEFAULT_DIFFICULTY];
+}
 
 export function cleanDifficulty(value) {
   return Object.hasOwn(DIFFICULTIES, value) ? value : DEFAULT_DIFFICULTY;
@@ -209,13 +246,13 @@ export function survivalPercent(ms) {
 // The game's score: every drop's points, then the difficulty, the game
 // limit and the time survived.
 export function gameScore(points, settings, ms) {
-  const d = difficultyOf(settings.difficulty);
+  const d = difficultyOf(settings.difficulty, settings.rules);
   return Math.floor((points * d.percent * GAME_LIMITS[settings.game] * survivalPercent(ms)) / 1e6);
 }
 
 // The same, as lines a person can read.
 export function scoreBreakdown(points, settings, ms) {
-  const d = difficultyOf(settings.difficulty);
+  const d = difficultyOf(settings.difficulty, settings.rules);
   return [
     ["Drops", points],
     [`${d.label}`, `${d.percent}%`],

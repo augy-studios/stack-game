@@ -16,6 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as THREE from "../../main-site/vendor/three/build/three.module.js";
+import { MAX_START } from "../../main-site/js/rules.js";
 
 const out = process.argv[2];
 if (!out) throw new Error("usage: node meshes.mjs <out-dir>");
@@ -158,13 +159,15 @@ function flat(geo) {
 function islandFoliage() {
   let seed = 20261101;
   const rand = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
+  // Clear of the biggest base any difficulty starts with, as in the scene.
+  const clear = (MAX_START / 1000) / 2 + 0.12;
   const spot = () => {
     for (;;) {
       const a = rand() * Math.PI * 2;
-      const r = Math.sqrt(0.62 ** 2 + rand() * (1.55 ** 2 - 0.62 ** 2));
+      const r = Math.sqrt(clear ** 2 + rand() * (1.55 ** 2 - clear ** 2));
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;
-      if (Math.max(Math.abs(x), Math.abs(z)) > 0.62) return [x, z];
+      if (Math.max(Math.abs(x), Math.abs(z)) > clear) return [x, z];
     }
   };
   const o = new THREE.Object3D();
@@ -383,6 +386,7 @@ writeGlb("Island.glb", [
     name: "Island",
     children: [
       // The base: one unit cube from the island's top, y = -1, to y = 0.
+      // Scripts/BaseColumn.cs sizes it to the difficulty's starting slab.
       { name: "BaseColumn", geo: box(), material: "Block", position: [0, ISLAND_Y / 2, 0] },
       { name: "Sand", geo: sand(), material: "Sand", position: [0, SAND_TOP_Y - SAND_HEIGHT / 2, 0] },
       { name: "Grass", geo: grass(), material: "Grass", position: [0, GRASS_TOP_Y - 0.07, 0] },

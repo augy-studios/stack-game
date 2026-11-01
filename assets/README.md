@@ -44,7 +44,10 @@ same way, so everything lines up. Use it, not your own conversion.
 2. A **Directional Light** for the sun. `SceneLook` points it and sets its
    brightness.
 3. `Meshes/Island.fbx` at the origin. It holds the base column, sand,
-   grass, rocks and every plant, with materials already assigned.
+   grass, rocks and every plant, with materials already assigned. Add
+   `BaseColumn` to it, with the sea's `WaterSurface` in its *Water* field,
+   and call `Apply(difficulty)` when a game starts: each difficulty starts
+   on a different size of base (`Rules.Difficulty.Start`).
 4. `Meshes/WaterHigh.fbx` at the origin, with `WaterSurface` on it. Use
    `WaterLow.fbx` and tick *Low Quality* on `Materials/Water` for slower
    devices. `WaterHigh` has 66,049 vertices, so it needs 32-bit indices
@@ -60,7 +63,8 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 
 | Script | Does |
 | --- | --- |
-| `Rules` | The slab's speed and swing, the water's rise. Integers, as in `js/rules.js` |
+| `Rules` | The slab's speed and swing, the water's rise, each difficulty's starting size. Integers, as in `js/rules.js` (the current rules version only) |
+| `BaseColumn` | Sizes the island's base column to the difficulty's starting slab |
 | `Fall` | A cut-off piece's tumble, bounces and splash, as in `js/fall.js` |
 | `FallingPiece` | Plays a `Fall` on a block and raises its impacts |
 | `World` | Game units and axes to Unity's |
@@ -95,6 +99,10 @@ code, not assets.
 - **Foliage in `Island.fbx`** keeps its sway in the UVs: uv0 is each
   plant's root and uv1 how far it moves. Don't let anything regenerate
   those UVs (lightmap UVs go in uv2, which is fine).
+- **The checked-in `Island.fbx`** still scatters its plants clear of a
+  1-unit base. Easy's base is 1.4 across, so a few plants are hidden inside
+  it until `export.mjs` is run again, which scatters them clear of the
+  widest base as the web game does.
 
 ## Not checked in Unity
 

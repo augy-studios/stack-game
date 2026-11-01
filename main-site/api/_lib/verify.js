@@ -59,7 +59,7 @@ export function check(game, record, elapsedMs) {
   for (let i = 1; i < record.taps.length; i++) {
     if (record.taps[i] - record.taps[i - 1] < MIN_GAP_MS) quick += 1;
   }
-  const d = difficultyOf(record.difficulty);
+  const d = difficultyOf(record.difficulty, record.v);
   const perfects = state.drops.filter((drop) => drop.perfect && !drop.auto);
   const meanOff = perfects.reduce((sum, drop) => sum + Math.abs(drop.raw), 0) / Math.max(1, perfects.length);
   if (quick > MAX_QUICK_GAPS || (perfects.length >= PRECISE_MIN_DROPS && meanOff < d.perfect * PRECISE_SHARE)) {

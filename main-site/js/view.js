@@ -3,8 +3,8 @@
 // hands it a finished game and any moment in it. Both go through here, so a
 // replay looks and sounds exactly like the game did.
 
-import { LAYER, difficultyOf, speedFor, swingAt, waterAt } from "./rules.js";
-import { axisOf } from "./sim.js";
+import { LAYER, speedFor, swingAt, waterAt } from "./rules.js";
+import { axisOf, difficultyOfGame } from "./sim.js";
 import { simulateFall } from "./fall.js";
 import * as audio from "./audio.js";
 
@@ -31,7 +31,7 @@ export function createPresenter() {
   function fallFor(key, piece) {
     let fall = falls.get(key);
     if (!fall) {
-      fall = simulateFall(piece, game.layers, difficultyOf(game.settings.difficulty));
+      fall = simulateFall(piece, game.layers, difficultyOfGame(game));
       falls.set(key, fall);
     }
     return fall;
@@ -57,7 +57,7 @@ export function createPresenter() {
     const n = count;
     const prev = game.layers[n - 1];
     const spawn = n >= 2 ? game.drops[n - 2].t : 0;
-    const speed = speedFor(difficultyOf(game.settings.difficulty), n);
+    const speed = speedFor(difficultyOfGame(game), n);
     const raw = swingAt(speed, Math.max(0, t - spawn));
     const axis = axisOf(n);
     return {
@@ -101,7 +101,7 @@ export function createPresenter() {
 
   const waterAtTime = (t) => {
     const end = game.over ? game.over.at + AFTER_MS : Infinity;
-    return waterAt(difficultyOf(game.settings.difficulty), Math.min(t, end));
+    return waterAt(difficultyOfGame(game), Math.min(t, end));
   };
 
   // What the scene needs to draw `state` at game time t.

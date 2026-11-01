@@ -369,7 +369,8 @@ function back() {
 /* ---- the end of a game ---- */
 
 function recordOf(st) {
-  const rec = { v: 1, seed: st.seed, ...st.settings, taps: [...S.taps], end: st.over.at };
+  const { rules, ...settings } = st.settings;
+  const rec = { v: rules, seed: st.seed, ...settings, taps: [...S.taps], end: st.over.at };
   if (S.autoUsed) rec.auto = true;
   return rec;
 }
