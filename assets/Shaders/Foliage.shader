@@ -14,6 +14,8 @@
 //                                own space.
 //
 // _BaseColor tints the lot: white in the light theme, 0.7 grey in the dark.
+// On high quality the plants cast and take the sun's shadow and take URP's
+// ambient occlusion, as Lambert.shader.
 Shader "uwuStack/Foliage"
 {
     Properties
@@ -74,6 +76,11 @@ Shader "uwuStack/Foliage"
             #pragma fragment frag
             #pragma multi_compile_fog
             #pragma multi_compile_instancing
+            // The sun's shadows and URP's screen space ambient occlusion,
+            // when the URP Asset and Renderer have them on (high quality).
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
+            #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
             struct Varyings
@@ -82,6 +89,7 @@ Shader "uwuStack/Foliage"
                 float3 normalWS : TEXCOORD0;
                 half3 color : TEXCOORD1;
                 half fogFactor : TEXCOORD2;
+                float3 positionWS : TEXCOORD3;
             };
 
             Varyings vert(Attributes v)
@@ -90,6 +98,7 @@ Shader "uwuStack/Foliage"
                 Varyings o;
                 VertexPositionInputs p = GetVertexPositionInputs(Sway(v));
                 o.positionCS = p.positionCS;
+                o.positionWS = p.positionWS;
                 o.normalWS = TransformObjectToWorldNormal(v.normalOS);
                 // The FBX holds sRGB colours; lighting wants them linear.
             #if defined(UNITY_COLORSPACE_GAMMA)
@@ -104,11 +113,63 @@ Shader "uwuStack/Foliage"
             half4 frag(Varyings i) : SV_Target
             {
                 float3 n = normalize(i.normalWS);
-                Light sun = GetMainLight();
-                half3 light = sun.color * saturate(dot(n, sun.direction)) + SampleSH(n);
+                Light sun = GetMainLight(TransformWorldToShadowCoord(i.positionWS));
+                half direct = 1;
+                half indirect = 1;
+            #if defined(_SCREEN_SPACE_OCCLUSION)
+                AmbientOcclusionFactor ao = GetScreenSpaceAmbientOcclusion(GetNormalizedScreenSpaceUV(i.positionCS));
+                direct = ao.directAmbientOcclusion;
+                indirect = ao.indirectAmbientOcclusion;
+            #endif
+                half3 light = sun.color * saturate(dot(n, sun.direction)) * sun.shadowAttenuation * direct + SampleSH(n) * indirect;
                 half3 c = i.color * _BaseColor.rgb * light;
                 return half4(MixFog(c, i.fogFactor), 1);
             }
+            ENDHLSL
+        }
+
+        // Casts the sun's shadow, swaying as it does, on high quality.
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags { "LightMode" = "ShadowCaster" }
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0
+
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile_instancing
+            #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+
+            float3 _LightDirection;
+            float3 _LightPosition;
+
+            struct Varyings { float4 positionCS : SV_POSITION; };
+
+            Varyings vert(Attributes v)
+            {
+                UNITY_SETUP_INSTANCE_ID(v);
+                Varyings o;
+                float3 positionWS = TransformObjectToWorld(Sway(v));
+                float3 normalWS = TransformObjectToWorldNormal(v.normalOS);
+            #if defined(_CASTING_PUNCTUAL_LIGHT_SHADOW)
+                float3 toLight = normalize(_LightPosition - positionWS);
+            #else
+                float3 toLight = _LightDirection;
+            #endif
+                o.positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, toLight));
+            #if UNITY_REVERSED_Z
+                o.positionCS.z = min(o.positionCS.z, UNITY_NEAR_CLIP_VALUE);
+            #else
+                o.positionCS.z = max(o.positionCS.z, UNITY_NEAR_CLIP_VALUE);
+            #endif
+                return o;
+            }
+
+            half4 frag(Varyings i) : SV_Target { return 0; }
             ENDHLSL
         }
 

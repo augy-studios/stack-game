@@ -402,6 +402,8 @@ const WAVES = `
 `;
 
 const WATER_VERTEX = `
+  #include <common>
+  #include <shadowmap_pars_vertex>
   uniform float uTime;
   varying vec3 vWorld;
   varying vec2 vFlat;
@@ -417,10 +419,19 @@ const WATER_VERTEX = `
     vWaveNormal = n;
     world.xyz += disp;
     vWorld = world.xyz;
+    // Where it is in the sun's shadow map, on high quality.
+    #if defined(USE_SHADOWMAP) && NUM_DIR_LIGHT_SHADOWS > 0
+      vDirectionalShadowCoord[0] = directionalShadowMatrix[0] * vec4(world.xyz + n * directionalLightShadows[0].shadowNormalBias, 1.0);
+    #endif
     gl_Position = projectionMatrix * viewMatrix * world;
   }
 `;
 const WATER_FRAGMENT = `
+  #include <common>
+  #include <bsdfs>
+  #include <lights_pars_begin>
+  #include <shadowmap_pars_fragment>
+  #include <shadowmask_pars_fragment>
   uniform float uTime;
   uniform vec3 uDeep;
   uniform vec3 uShallow;
@@ -525,9 +536,14 @@ const WATER_FRAGMENT = `
     body += uShallow * 0.18 * clamp(vHeight / 0.04, 0.0, 1.0);
     vec3 c = mix(body, sky, fresnel);
 
+    // In the shadow of the tower or the island, on high quality: darker,
+    // and no glint.
+    float lit = getShadowMask();
+    c *= mix(0.72, 1.0, lit);
+
     // The sun: a hard glint off facets turned just right, a sheen round it.
     float nh = max(dot(n, normalize(uSun + v)), 0.0);
-    c += uGlint * (pow(nh, 900.0) * 2.2 + pow(nh, 80.0) * 0.12);
+    c += uGlint * (pow(nh, 900.0) * 2.2 + pow(nh, 80.0) * 0.12) * lit;
 
     // Foam where the water meets the island or the tower, on the highest
     // crests, and where something went in, broken up so it reads as foam.
@@ -577,6 +593,25 @@ export function createScene(canvas, { quality = "high" } = {}) {
   sun.position.set(-2.2, 5, 3.4);
   scene.add(sun);
   scene.add(sun.target);
+
+  // Its shadows, on high quality: soft, from a square of the world round
+  // where the camera looks, sized to how far back it is. setQuality()
+  // turns them on and off; draw() moves the square.
+  const SUN_FROM = new THREE.Vector3(-2.2, 5, 3.4).normalize();
+  const SHADOW_MAP = 2048;
+  sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.015;
+  sun.shadow.radius = 2.5;
+  sun.shadow.intensity = 0.9;
+  sun.shadow.camera.near = 0.5;
+  sun.shadow.camera.far = 90;
+  // The light's own right and up, to snap the square to whole shadow-map
+  // texels so its edges hold still as the camera eases.
+  const sunRight = new THREE.Vector3().crossVectors(SUN_FROM, new THREE.Vector3(0, 1, 0)).normalize();
+  const sunUp = new THREE.Vector3().crossVectors(sunRight, SUN_FROM).normalize();
+  const shadowAt = new THREE.Vector3();
+  const shadowed = (o) => { o.castShadow = true; o.receiveShadow = true; };
 
   /* ---- sky: its own flat scene, drawn first ---- */
   const back = new THREE.Scene();
@@ -655,6 +690,8 @@ export function createScene(canvas, { quality = "high" } = {}) {
     uShore: { value: -1 },
     uColumn: { value: new THREE.Vector4(0, 0, -1, -1) },
     uRipples: { value: Array.from({ length: RIPPLES }, () => new THREE.Vector4(0, 0, -1, 0)) },
+    // The scene's lights, for the sun's shadow on high quality.
+    ...THREE.UniformsUtils.clone(THREE.UniformsLib.lights),
   };
   // About a unit between vertices, enough for the long waves; the short
   // ones are only in the shading. setQuality() makes it.
@@ -666,9 +703,11 @@ export function createScene(canvas, { quality = "high" } = {}) {
       fragmentShader: WATER_FRAGMENT,
       transparent: true,
       depthWrite: false,
+      lights: true,
     })
   );
   water.rotation.x = -Math.PI / 2;
+  water.receiveShadow = true;
   water.renderOrder = 2;
   scene.add(water);
 
@@ -753,6 +792,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
       island.add(flowers);
     });
   }
+  island.traverse(shadowed);
   scene.add(island);
 
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -760,6 +800,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
   const base = new THREE.Mesh(boxGeo, baseMat);
   base.scale.set(1, -islandTop, 1);
   base.position.y = islandTop / 2;
+  shadowed(base);
   scene.add(base);
 
   /* ---- the tower ---- */
@@ -782,6 +823,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     tower.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     tower.count = 0;
     tower.frustumCulled = false;
+    shadowed(tower);
     scene.add(tower);
     towerShown = 0;
   }
@@ -849,6 +891,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
   /* ---- the slab, the pieces and the rings ---- */
   const slabMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const slab = new THREE.Mesh(boxGeo, slabMat);
+  shadowed(slab);
   scene.add(slab);
 
   const piecePool = [];
@@ -856,6 +899,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     while (piecePool.length <= i) {
       const m = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }));
       m.visible = false;
+      shadowed(m);
       scene.add(m);
       piecePool.push(m);
     }
@@ -915,6 +959,9 @@ export function createScene(canvas, { quality = "high" } = {}) {
     horizon: new THREE.Color(),
     bottom: new THREE.Color(),
   };
+
+  // How bright the god rays are: full by day, faint by night.
+  let raysLevel = 1;
 
   function readTheme() {
     const root = document.documentElement;
@@ -977,6 +1024,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
       sandMat.color.setHex(0xa89a78);
       grassMat.color.setHex(0x6f9a62);
       foliageMat.color.setScalar(0.7);
+      raysLevel = 0.35;
     } else {
       waterUniforms.uDeep.value.setHSL(0.55, 0.5, 0.55);
       waterUniforms.uShallow.value.setHSL(0.49, 0.5, 0.7);
@@ -996,6 +1044,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
       sandMat.color.setHex(0xe9d7a8);
       grassMat.color.setHex(0x9fcf8f);
       foliageMat.color.setScalar(1);
+      raysLevel = 1;
     }
     hemi.color.copy(look.top).lerp(WHITE, 0.6);
   }
@@ -1016,6 +1065,13 @@ export function createScene(canvas, { quality = "high" } = {}) {
     skyMat.defines.OCTAVES = low ? 3 : 5;
     skyMat.needsUpdate = true;
     clouds.forEach((c, i) => { c.userData.shown = !low || i % 2 === 0; });
+    // Shadows: every lit material is built again with or without them.
+    renderer.shadowMap.enabled = !low;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    sun.castShadow = !low;
+    scene.traverse((o) => {
+      if (o.material && !o.isSprite) o.material.needsUpdate = true;
+    });
     // Made the first time it is wanted, and let go on low to free its memory.
     if (low) {
       post?.dispose();
@@ -1312,8 +1368,23 @@ export function createScene(canvas, { quality = "high" } = {}) {
     waterUniforms.uNear.value = 5 + dist * 0.4;
     waterUniforms.uFar.value = 14 + dist * 1.1;
 
-    sun.position.set(target.x - 2.2, target.y + 5, target.z + 3.4);
-    sun.target.position.copy(target);
+    // The sun's shadow square: round the target, big enough for the view,
+    // in steps so it does not swim, its centre snapped to whole texels.
+    const half = Math.ceil(THREE.MathUtils.clamp(dist * 0.55, 4, 18) / 2) * 2;
+    const texel = (2 * half) / SHADOW_MAP;
+    const onRight = target.dot(sunRight);
+    const onUp = target.dot(sunUp);
+    shadowAt.copy(target)
+      .addScaledVector(sunRight, Math.round(onRight / texel) * texel - onRight)
+      .addScaledVector(sunUp, Math.round(onUp / texel) * texel - onUp);
+    const sc = sun.shadow.camera;
+    if (sc.right !== half) {
+      sc.left = sc.bottom = -half;
+      sc.right = sc.top = half;
+      sc.updateProjectionMatrix();
+    }
+    sun.position.copy(shadowAt).addScaledVector(SUN_FROM, 40);
+    sun.target.position.copy(shadowAt);
 
     const fx = cam.x;
     const fz = cam.z;
@@ -1350,7 +1421,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
       renderer.render(back, backCamera);
       renderer.render(scene, camera);
     };
-    if (post) post.render(paint, clock);
+    if (post) post.render(paint, { camera, sun: GLINT, rays: raysLevel, time: clock });
     else paint();
   }
 

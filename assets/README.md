@@ -21,7 +21,7 @@ again.
 | `Audio/Fallback/` | The stand-ins the game synthesises until a recording loads; Unity does not need them | `js/audio.js` |
 | `Meshes/` | FBX: `Block` (every layer, slab and piece), the island whole (`Island`) and in parts, foliage, splash crown and drop, perfect ring frame and plate, and the sea at two densities | `js/scene.js` |
 | `Materials/` | One per surface, set up for the shaders below | `js/scene.js` |
-| `Shaders/` | URP ports of the scene's look: `Lambert` (solids), `Foliage` (sway), `Unlit Transparent` (effects, clouds), `Water`, `Sky` (skybox) | `js/scene.js` |
+| `Shaders/` | URP ports of the scene's look: `Lambert` (solids), `Foliage` (sway), `Unlit Transparent` (effects, clouds), `Water`, `Sky` (skybox), and `GodRays` for the renderer feature. The solids and plants cast and take the sun's shadow and take URP's ambient occlusion; the water takes the shadow | `js/scene.js`, `js/post.js` |
 | `Scripts/` | C# ports of the animation and the numbers they run on: see below | `js/*.js` |
 | `Textures/` | `Cloud.png`: the five cloud shapes at 2x, stacked top to bottom | `js/clouds.js` |
 | `Icons/UI/` | Every UI icon, white on clear at 128 px, imported as sprites to tint | `js/icons.js` |
@@ -52,8 +52,14 @@ same way, so everything lines up. Use it, not your own conversion.
    `WaterLow.fbx` and tick *Low Quality* on `Materials/Water` for slower
    devices. `WaterHigh` has 66,049 vertices, so it needs 32-bit indices
    (Unity picks them automatically).
-5. On the camera: `TowerCamera` and `PostLook` (turn **HDR** on in the URP
-   Asset so the bloom has something past white to find). On empty objects: `SceneLook`,
+5. On the camera: `TowerCamera` and `PostLook`, with the sun in its *Sun*
+   field. For high quality's look, once per project: in the URP Asset turn
+   **HDR** on and the main light's **Cast Shadows** and **Soft Shadows** on;
+   in the Universal Renderer Data add the **Screen Space Ambient Occlusion**
+   feature (Source Depth Normals, Radius 0.32, Intensity 0.85) and the
+   **God Rays** feature (`Scripts/GodRays.cs`, with `Shaders/GodRays.shader`),
+   then drop that Renderer Data into `PostLook`'s *Renderer Data* field so
+   Low Quality turns them off. On empty objects: `SceneLook`,
    `CloudDrift`, `Splashes` and `GameAudio`, with their fields filled in.
 
 Tower layers are `Meshes/Block.fbx` with `Materials/Block`, scaled to
@@ -76,7 +82,8 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 | `PerfectRing` | The frame and plate that spread from a perfect drop |
 | `LayerGrow` | A layer's side easing back out after a run of perfects |
 | `CloudDrift` | The sixteen cumulus sprites the wind carries past the tower, fading in and out |
-| `PostLook` | High quality's post-processing on URP's own effects: bloom, colour, vignette and dither, as `js/post.js`; off with *Low Quality* |
+| `PostLook` | High quality's look on URP's own effects: the sun's soft shadows, ambient occlusion, god rays, bloom, colour, vignette and dither, as `js/scene.js` and `js/post.js`; all off with *Low Quality* |
+| `GodRays` | A URP renderer feature (render graph): light shafts fanning out round the tower from the sun's glint, as `js/post.js` |
 | `TowerCamera` | The follow camera, overview and free-camera offsets |
 | `GameAudio` | Every sound at the game's levels and pitches, and the water loop dulling with distance |
 

@@ -102,6 +102,9 @@ namespace UwuStack
                 water.SetColor("_FoamColor", look.WaterFoam);
                 water.SetFloat("_Glint", look.Glint);
             }
+            // The god rays, as bright as the glint: full by day, faint by
+            // night (Scripts/GodRays.cs).
+            Shader.SetGlobalFloat("_GodRaysLevel", look.Glint);
             if (sand != null) sand.SetColor("_BaseColor", look.Sand);
             if (grass != null) grass.SetColor("_BaseColor", look.Grass);
             if (rock != null) rock.SetColor("_BaseColor", look.Rock);

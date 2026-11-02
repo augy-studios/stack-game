@@ -48,7 +48,11 @@ Shader "uwuStack/Water"
             #pragma vertex vert
             #pragma fragment frag
             #pragma shader_feature_local _LOW_QUALITY
+            // The sun's shadow from the tower and the island, on high quality.
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
 
             #define RIPPLES 4
 
@@ -235,10 +239,15 @@ Shader "uwuStack/Water"
                 body += _ShallowColor.rgb * 0.18 * saturate(i.height / 0.04);
                 float3 c = lerp(body, sky, fresnel);
 
+                // In the shadow of the tower or the island, on high quality:
+                // darker, and no glint. As js/scene.js.
+                float lit = MainLightRealtimeShadow(TransformWorldToShadowCoord(i.world));
+                c *= lerp(0.72, 1.0, lit);
+
                 // The sun: a hard glint off facets turned just right, a
                 // sheen round it.
                 float nh = max(dot(n, normalize(normalize(_SunDir.xyz) + v)), 0.0);
-                c += _Glint * (pow(nh, 900.0) * 2.2 + pow(nh, 80.0) * 0.12);
+                c += _Glint * (pow(nh, 900.0) * 2.2 + pow(nh, 80.0) * 0.12) * lit;
 
                 // Foam where the water meets the island or the tower, on the
                 // highest crests, and where something went in, broken up so
