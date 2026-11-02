@@ -13,6 +13,7 @@ import * as THREE from "three";
 import { LAYER, ISLAND_TOP, MAX_START } from "./rules.js";
 import { fallAt } from "./fall.js";
 import { drawCloud, CLOUD_VARIANTS } from "./clouds.js";
+import { createPost } from "./post.js";
 
 const S = 1 / 1000;
 const FOV = 40;
@@ -557,10 +558,11 @@ const WATER_FRAGMENT = `
 `;
 
 // quality: "high", or "low" for a slower device: one pixel per CSS pixel,
-// no antialiasing, and plainer water on a coarser mesh. Antialiasing is
-// fixed when the renderer is made, so a change to it waits for a reload.
+// no antialiasing, no post-processing, and plainer water on a coarser mesh.
+// High draws into js/post.js's multisampled picture, which does its
+// antialiasing, so the canvas itself never needs any.
 export function createScene(canvas, { quality = "high" } = {}) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== "low", powerPreference: "high-performance" });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.autoClear = false;
 
@@ -1000,6 +1002,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
 
   /* ---- quality ---- */
   let drawnAs = null;
+  let post = null;
 
   function setQuality(value) {
     const low = value === "low";
@@ -1013,6 +1016,13 @@ export function createScene(canvas, { quality = "high" } = {}) {
     skyMat.defines.OCTAVES = low ? 3 : 5;
     skyMat.needsUpdate = true;
     clouds.forEach((c, i) => { c.userData.shown = !low || i % 2 === 0; });
+    // Made the first time it is wanted, and let go on low to free its memory.
+    if (low) {
+      post?.dispose();
+      post = null;
+    } else {
+      post ??= createPost(renderer);
+    }
   }
 
   /* ---- where the water meets things ---- */
@@ -1335,9 +1345,13 @@ export function createScene(canvas, { quality = "high" } = {}) {
     skyUniforms.uTime.value = clock;
     skyUniforms.uPixel.value = renderer.getPixelRatio();
     skyUniforms.uAspect.value = camera.aspect;
-    renderer.clear();
-    renderer.render(back, backCamera);
-    renderer.render(scene, camera);
+    const paint = () => {
+      renderer.clear();
+      renderer.render(back, backCamera);
+      renderer.render(scene, camera);
+    };
+    if (post) post.render(paint, clock);
+    else paint();
   }
 
   // Snaps the camera to wherever it is going on the next frame, for a jump

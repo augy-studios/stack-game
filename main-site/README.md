@@ -31,6 +31,7 @@ the browser and the server always agree on a game.
 | `record.js` | A game as it is kept, sent and shared, and the token a long replay link carries. |
 | `fall.js` | Cut-off pieces tipping, knocking against wider layers and splashing, worked out once in fixed steps so they fall the same way live and in the replay. |
 | `clouds.js` | Draws the cumulus cloud sprites on a canvas, with no imports, so the Unity export draws the same ones. |
+| `post.js` | High quality's post-processing: the offscreen multisampled picture, the bloom chain, and the grade, vignette and dither it is finished with. |
 | `scene.js` | The three.js world: the gradient sky with its drifting cumulus and cirrus, twinkling stars and night meteors, the cloud sprites, the water, the island, the tower, the slab, the pieces and the perfect rings. |
 | `view.js` | Turns a game at a moment into what the scene draws and the speakers play, for the live game and the replay alike. |
 | `audio.js` | Every sound. A falling piece's knock, a grown layer's slide, the splash and the water's loop are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
@@ -112,7 +113,11 @@ double-tap to put it back.
 
 **Quality.** Settings has High and Low graphics. Low draws one pixel per
 CSS pixel without antialiasing and gives the water a coarser mesh and no
-fine ripples, for a smoother game on a slower device.
+fine ripples, for a smoother game on a slower device. High also finishes
+every frame with post-processing (`post.js`): the scene is drawn into a
+multisampled, half-float picture, then a soft bloom on whatever is brighter
+than white, a gentle colour grade, a vignette and a speck of dither go on
+it on the way to the screen. Low skips all of it and frees its memory.
 
 **Sharing a replay.** Share replay makes a link, through the device's share
 sheet where it has one and the clipboard otherwise. Online, it is a short

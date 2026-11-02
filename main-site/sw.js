@@ -38,7 +38,7 @@
 //    modules, so the game draws offline. The four recordings under
 //    /sounds/ are precached too; every other sound is synthesised.
 
-const VERSION = "uwustack-v12";
+const VERSION = "uwustack-v13";
 
 const SHELL = `uwustack-shell-${VERSION}`;
 
@@ -71,6 +71,7 @@ const PRECACHE = [
   "/js/leaderboard.js",
   "/js/net.js",
   "/js/party.js",
+  "/js/post.js",
   "/js/qr.js",
   "/js/record.js",
   "/js/replay.js",
