@@ -4,8 +4,8 @@ namespace UwuStack
 {
     // Keeps the scene's colours where js/scene.js keeps them: the sky shifts
     // hue with the tower's top layer, easing rather than jumping, and the
-    // light or dark theme sets the water, the island, the light, the stars
-    // and the clouds.
+    // light or dark theme sets the water, the island, the light, the stars,
+    // the meteors and the clouds, in the sky and in the world.
     //
     // Put it on any object and fill in the materials it should drive. It
     // also sets the scene's ambient light to a gradient, as the game's
@@ -24,6 +24,9 @@ namespace UwuStack
 
         [Header("Light")]
         public Light sun;
+
+        [Header("Camera")]
+        public TowerCamera rig;     // the sky pans as it turns
 
         [Header("Now")]
         public bool dark;
@@ -68,6 +71,7 @@ namespace UwuStack
             bottom = Palette.Mix(bottom, look.SkyBottom, ease);
             // The foam follows the eased horizon, as the scene's does.
             if (!dark) look.WaterFoam = Palette.Mix(Color.white, horizon, 0.12f);
+            Palette.CloudColours(dark, top, horizon, out Color cloudLit, out Color cloudShade, out Color cloudTint);
 
             if (sky != null)
             {
@@ -76,6 +80,18 @@ namespace UwuStack
                 sky.SetColor("_BottomColor", bottom);
                 sky.SetFloat("_Glow", look.Glow);
                 sky.SetFloat("_StarsOpacity", look.Stars);
+                sky.SetFloat("_Meteors", look.Meteors);
+                sky.SetFloat("_Cumulus", look.Cumulus);
+                sky.SetFloat("_Cirrus", look.Cirrus);
+                sky.SetColor("_CloudLit", cloudLit);
+                sky.SetColor("_CloudShade", cloudShade);
+                // A turn the width of the view pans the sky a screen across.
+                Camera cam = rig != null ? rig.GetComponent<Camera>() : null;
+                if (cam != null)
+                {
+                    float across = 2 * Mathf.Atan(Mathf.Tan(cam.fieldOfView / 2 * Mathf.Deg2Rad) * cam.aspect);
+                    sky.SetFloat("_Pan", -rig.Yaw / across);
+                }
             }
             if (water != null)
             {
@@ -96,7 +112,7 @@ namespace UwuStack
                     if (m != null) m.SetColor("_BaseColor", new Color(look.Foliage, look.Foliage, look.Foliage, 1f));
                 }
             }
-            if (cloud != null) cloud.SetColor("_BaseColor", new Color(1f, 1f, 1f, look.Clouds));
+            if (cloud != null) cloud.SetColor("_BaseColor", new Color(cloudTint.r, cloudTint.g, cloudTint.b, look.Clouds));
             if (splashDrop != null)
             {
                 Color drop = Palette.SplashDrop(look);

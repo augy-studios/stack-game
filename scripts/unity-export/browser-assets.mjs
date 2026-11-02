@@ -1,5 +1,5 @@
-// Makes the assets that need a browser: the cloud texture and the star field
-// as the scene draws them, the UI icons as PNGs, and every sound the game
+// Makes the assets that need a browser: the cloud texture as the scene
+// draws it, the UI icons as PNGs, and every sound the game
 // synthesises, rendered offline through js/audio.js itself.
 //
 //   node scripts/unity-export/browser-assets.mjs <assets-dir>
@@ -110,57 +110,24 @@ const write = (rel, base64) => {
 
 /* ---- in the page ---- */
 
-// The cloud sprite, drawn as cloudTexture() in js/scene.js draws it, at four
-// times the size: the same picture, sharper when a sprite is big on screen.
-const CLOUD = `(() => {
-  const k = 4;
-  const c = document.createElement("canvas");
-  c.width = 128 * k;
-  c.height = 64 * k;
-  const g = c.getContext("2d");
-  const blob = (x, y, r) => {
-    x *= k; y *= k; r *= k;
-    const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, "rgba(255,255,255,0.9)");
-    grad.addColorStop(1, "rgba(255,255,255,0)");
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.fill();
-  };
-  blob(40, 38, 26);
-  blob(66, 30, 30);
-  blob(92, 38, 24);
-  return c.toDataURL("image/png").split(",")[1];
-})()`;
-
-// The stars, from the same seeded scatter as createScene(): x across the
-// whole screen, fewer towards the bottom. The scene draws them as 2.2 pixel
-// points over the sky; here they are soft dots on a square texture the sky
-// shader lays over the screen.
-const STARS = `(() => {
-  const size = 2048;
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const g = c.getContext("2d");
-  let s = 12345;
-  const rand = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
-  const r = 2.2 * size / 1080 / 2;
-  for (let i = 0; i < 220; i++) {
-    const x = rand() * 2 - 1;
-    const y = 1 - 2 * rand() ** 1.6;
-    const px = (x + 1) / 2 * size;
-    const py = (1 - (y + 1) / 2) * size;
-    const grad = g.createRadialGradient(px, py, 0, px, py, r * 1.6);
-    grad.addColorStop(0, "rgba(255,255,255,1)");
-    grad.addColorStop(0.6, "rgba(255,255,255,0.9)");
-    grad.addColorStop(1, "rgba(255,255,255,0)");
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(px, py, r * 1.6, 0, Math.PI * 2);
-    g.fill();
+// The cloud sprites, drawn by js/clouds.js as the scene draws them, at
+// twice the size, all five shapes stacked top to bottom in one texture:
+// Scripts/CloudDrift.cs gives each cloud its own row.
+const CLOUD = `(async () => {
+  const { drawCloud, CLOUD_VARIANTS } = await import("/main-site/js/clouds.js");
+  const W = 512;
+  const H = 256;
+  const atlas = document.createElement("canvas");
+  atlas.width = W;
+  atlas.height = H * CLOUD_VARIANTS;
+  for (let i = 0; i < CLOUD_VARIANTS; i++) {
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    drawCloud(c.getContext("2d"), i, W, H);
+    atlas.getContext("2d").drawImage(c, 0, i * H);
   }
-  return c.toDataURL("image/png").split(",")[1];
+  return atlas.toDataURL("image/png").split(",")[1];
 })()`;
 
 // Every icon in js/icons.js, white on clear so Unity's UI can tint them,
@@ -313,7 +280,6 @@ const server = await serve();
 const page = await launch(`http://127.0.0.1:${server.address().port}/`);
 try {
   write("Textures/Cloud.png", await page.evaluate(CLOUD));
-  write("Textures/Stars.png", await page.evaluate(STARS));
   for (const [name, png] of Object.entries(await page.evaluate(ICONS))) {
     write(`Icons/UI/${name[0].toUpperCase()}${name.slice(1)}.png`, png);
   }

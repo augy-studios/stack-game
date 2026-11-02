@@ -63,6 +63,7 @@ const PRECACHE = [
   "/js/app.js",
   "/js/api.js",
   "/js/audio.js",
+  "/js/clouds.js",
   "/js/fall.js",
   "/js/freecam.js",
   "/js/game.js",

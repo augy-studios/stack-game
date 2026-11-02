@@ -12,6 +12,7 @@
 import * as THREE from "three";
 import { LAYER, ISLAND_TOP, MAX_START } from "./rules.js";
 import { fallAt } from "./fall.js";
+import { drawCloud, CLOUD_VARIANTS } from "./clouds.js";
 
 const S = 1 / 1000;
 const FOV = 40;
@@ -72,80 +73,12 @@ function layerColour(seedNum, n, out = new THREE.Color()) {
 
 /* ---- textures and geometry made here, so nothing has to be fetched ---- */
 
-// A cumulus cloud, as a camera-facing sprite: a heap of soft puffs, highest
-// in the middle and squared off along a flat base, the way fair-weather
-// cumulus look. The tops are lit and the base is in its own shade, a
-// little bluer. Drawn white and grey, so the material's colour tints it
-// for the theme. Each variant heaps its puffs differently.
+// A cloud sprite's texture, drawn by js/clouds.js.
 function cloudTexture(variant) {
-  const W = 256;
-  const H = 128;
   const c = document.createElement("canvas");
-  c.width = W;
-  c.height = H;
-  const g = c.getContext("2d");
-  let s = 7919 * (variant + 1);
-  const rand = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
-  const base = H * 0.78;
-
-  // The puffs: a row along the base, then smaller ones heaped on top,
-  // under a dome that is tallest a little off centre.
-  const puffs = [];
-  const peak = 0.4 + rand() * 0.2;
-  const tall = 0.75 + rand() * 0.35;
-  for (let i = 0; i < 7; i++) {
-    const u = 0.16 + (i / 6) * 0.68 + (rand() - 0.5) * 0.06;
-    const dome = Math.max(0, 1 - ((u - peak) / 0.5) ** 2);
-    const r = H * (0.14 + 0.1 * dome + rand() * 0.05);
-    puffs.push({ x: u * W, y: base - r * 0.7, r });
-  }
-  for (let i = 0; i < 18; i++) {
-    const u = 0.18 + rand() * 0.64;
-    const dome = Math.max(0, 1 - ((u - peak) / 0.38) ** 2);
-    if (dome <= 0.08) continue;
-    const r = H * (0.11 + 0.1 * dome + 0.06 * rand());
-    const y = base - r * 0.9 - dome * tall * H * 0.36 * (0.6 + rand() * 0.4);
-    puffs.push({ x: u * W, y, r });
-  }
-
-  // Each puff is a soft disc: whiter towards its upper side, where the sun
-  // catches it, and greyer below.
-  for (const { x, y, r } of puffs) {
-    const shade = g.createRadialGradient(x, y + r * 0.2, 0, x, y + r * 0.2, r);
-    shade.addColorStop(0, "rgba(214,222,238,1)");
-    shade.addColorStop(0.72, "rgba(214,222,238,0.9)");
-    shade.addColorStop(1, "rgba(214,222,238,0)");
-    g.fillStyle = shade;
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.fill();
-  }
-  for (const { x, y, r } of puffs) {
-    const lit = g.createRadialGradient(x - r * 0.15, y - r * 0.3, 0, x - r * 0.15, y - r * 0.3, r * 1.05);
-    lit.addColorStop(0, "rgba(255,255,255,1)");
-    lit.addColorStop(0.6, "rgba(255,255,255,0.85)");
-    lit.addColorStop(1, "rgba(255,255,255,0)");
-    g.fillStyle = lit;
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.fill();
-  }
-
-  // The base: a darker band along the bottom, then cut flat and soft.
-  g.globalCompositeOperation = "source-atop";
-  const under = g.createLinearGradient(0, base - H * 0.22, 0, base);
-  under.addColorStop(0, "rgba(180,192,214,0)");
-  under.addColorStop(1, "rgba(180,192,214,0.4)");
-  g.fillStyle = under;
-  g.fillRect(0, 0, W, H);
-  g.globalCompositeOperation = "destination-in";
-  const cut = g.createLinearGradient(0, base - 6, 0, base + 3);
-  cut.addColorStop(0, "rgba(0,0,0,1)");
-  cut.addColorStop(1, "rgba(0,0,0,0)");
-  g.fillStyle = cut;
-  g.fillRect(0, 0, W, H);
-  g.globalCompositeOperation = "source-over";
-
+  c.width = 256;
+  c.height = 128;
+  drawCloud(c.getContext("2d"), variant, c.width, c.height);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -327,10 +260,15 @@ const SKY_FRAGMENT = `
     return v;
   }
 
+  // Two octaves, for the broad, slow fields that only steer the detail.
+  float fbm2(vec2 p) {
+    return 0.5 * noise(p) + 0.25 * noise(mat2(0.8, 0.6, -0.6, 0.8) * p * 2.03 + 17.1);
+  }
+
   // How much cumulus there is at a point on its plane: big slow shapes for
   // where the clouds are, and finer billows that churn as they go.
   float cumulus(vec2 p) {
-    float shape = fbm(p * 0.55);
+    float shape = fbm2(p * 0.55) * 1.33;
     float billow = fbm(p * 1.7 + vec2(uTime * 0.02, -uTime * 0.015));
     return shape * 0.75 + billow * 0.35;
   }
@@ -394,9 +332,9 @@ const SKY_FRAGMENT = `
       float far = 1.0 / (h + 0.25);
       vec2 q = vec2((vUv.x - 0.5 + uPan) * uAspect * far * 1.2, far * 2.0);
       q += vec2(uTime * 0.012, uTime * 0.02);
-      vec2 comb = vec2(fbm(q * 0.6), fbm(q * 0.6 + 5.2));
+      vec2 comb = vec2(fbm2(q * 0.6), fbm2(q * 0.6 + 5.2)) * 1.33;
       float streak = fbm(vec2(q.x * 0.9, q.y * 5.0) + comb * 1.6);
-      float patches = smoothstep(0.35, 0.65, fbm(q * 0.35 - 3.0));
+      float patches = smoothstep(0.35, 0.65, fbm2(q * 0.35 - 3.0) * 1.33);
       float cirrus = smoothstep(0.5, 0.8, streak) * patches * smoothstep(0.02, 0.25, h);
       c = mix(c, uCloudLit, cirrus * uCirrus);
 
@@ -675,7 +613,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
   const WIND = new THREE.Vector2(0.94, 0.34);
   const ACROSS = new THREE.Vector2(-WIND.y, WIND.x);
   const SPAN = 26;
-  const cloudMaps = [0, 1, 2, 3, 4].map(cloudTexture);
+  const cloudMaps = Array.from({ length: CLOUD_VARIANTS }, (_, i) => cloudTexture(i));
   const cloudTint = new THREE.Color(1, 1, 1);
   let cloudOpacity = 0.85;
   const clouds = [];

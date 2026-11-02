@@ -50,7 +50,7 @@ function play(settings, { spread = 28, perfectAim = false, maxDrops = 60 } = {})
   }
   if (!state.over) finish(state, state.t + 400);
   const game = { seed, difficulty: settings.difficulty, turn_limit: settings.turn, game_limit: settings.game };
-  return { state, game, record: { v: 1, seed, ...settings, taps, end: state.over.at } };
+  return { state, game, record: { v: state.settings.rules, seed, ...settings, taps, end: state.over.at } };
 }
 
 const settings = { difficulty: "medium", turn: 0, game: 0 };

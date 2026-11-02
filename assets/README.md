@@ -23,7 +23,7 @@ again.
 | `Materials/` | One per surface, set up for the shaders below | `js/scene.js` |
 | `Shaders/` | URP ports of the scene's look: `Lambert` (solids), `Foliage` (sway), `Unlit Transparent` (effects, clouds), `Water`, `Sky` (skybox) | `js/scene.js` |
 | `Scripts/` | C# ports of the animation and the numbers they run on: see below | `js/*.js` |
-| `Textures/` | `Cloud.png` (the cloud sprite at 4x), `Stars.png` (the star field) | `js/scene.js` |
+| `Textures/` | `Cloud.png`: the five cloud shapes at 2x, stacked top to bottom | `js/clouds.js` |
 | `Icons/UI/` | Every UI icon, white on clear at 128 px, imported as sprites to tint | `js/icons.js` |
 | `Icons/App/` | The app icon at 192, 512 and 2250 px | `main-site/` |
 
@@ -69,12 +69,12 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 | `FallingPiece` | Plays a `Fall` on a block and raises its impacts |
 | `World` | Game units and axes to Unity's |
 | `Palette` | Layer colours, and the sky, water and island colours for each theme |
-| `SceneLook` | Eases the sky after the tower's hue; applies the theme to materials, ambient light and fog |
+| `SceneLook` | Eases the sky after the tower's hue; applies the theme to materials, ambient light and fog; pans the sky with the free camera |
 | `WaterSurface` | Keeps the sea at the water level and feeds its shader the shore, the tower's waterline and the ripples |
 | `Splashes` | The crown and drops where a piece goes in |
 | `PerfectRing` | The frame and plate that spread from a perfect drop |
 | `LayerGrow` | A layer's side easing back out after a run of perfects |
-| `CloudDrift` | The nine clouds circling the island |
+| `CloudDrift` | The sixteen cumulus sprites the wind carries past the tower, fading in and out |
 | `TowerCamera` | The follow camera, overview and free-camera offsets |
 | `GameAudio` | Every sound at the game's levels and pitches, and the water loop dulling with distance |
 
@@ -88,8 +88,11 @@ code, not assets.
 - **Lighting** is Unity's: Lambert from the main light plus a gradient
   ambient standing in for three.js's hemisphere light. Close, not
   identical.
-- **Stars** are a texture laid over the screen rather than 2.2-pixel
-  points, so they stretch a little on very wide or tall screens.
+- **Stars** in the sky shader are sized to the screen's height, where the
+  web game sizes them in CSS pixels, so they come out a little bigger or
+  smaller on some screens.
+- **Low quality** is the Sky material's *Low Quality* toggle and
+  `CloudDrift`'s `lowQuality`, set by hand, as the Water material's is.
 - **Sound** levels are all halved, because the splash plays at 1.9x, past
   Unity's volume limit of 1. Raise the mixer group to taste. The browser's
   limiter is not reproduced.

@@ -34,6 +34,14 @@ namespace UwuStack
         // The height it follows, after easing: the top layer and a bit.
         public float FollowY { get; private set; } = 0.4f;
 
+        // The free camera's turn, after easing, in radians: the sky pans
+        // with it.
+        public float Yaw => oYaw;
+
+        // Where it looks round the tower, after easing (x, z), for the
+        // clouds that drift round it.
+        public Vector2 Centre => new Vector2(x, z);
+
         Camera cam;
         float top;
         Vector2 topXZ;

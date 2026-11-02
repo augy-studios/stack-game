@@ -72,7 +72,7 @@ function playLive(seed, settings, jitterMs, r, { quitAt = Infinity, autoplay = f
   }
   const end = state.over ? state.over.at : now;
   if (!state.over) finish(state, end);
-  return { state, record: { v: 1, seed: state.seed, ...state.settings, taps, end } };
+  return { state, record: { v: state.settings.rules, seed: state.seed, ...state.settings, taps, end } };
 }
 
 console.log("determinism and records");

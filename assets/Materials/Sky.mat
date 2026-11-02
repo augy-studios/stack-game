@@ -22,18 +22,21 @@ Material:
   m_LockedProperties:
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs:
-    - _StarsTex:
-        m_Texture: {fileID: 2800000, guid: 35378794d3f8dfbb8e7c71bea6adfac5, type: 3}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
+    m_TexEnvs: []
     m_Ints: []
     m_Floats:
     - _Glow: 0.35
-    - _StarsOpacity: 0.7
+    - _StarsOpacity: 0.6
+    - _Meteors: 0
+    - _Cumulus: 0.85
+    - _Cirrus: 0.55
+    - _Pan: 0
+    - _LowQuality: 0
     m_Colors:
     - _TopColor: {r: 0.874000, g: 0.848333, b: 0.566000, a: 1}
     - _HorizonColor: {r: 0.929206, g: 0.865552, b: 0.769797, a: 1}
     - _BottomColor: {r: 0.910000, g: 0.690000, b: 0.690000, a: 1}
+    - _CloudLit: {r: 0.994581, g: 0.990122, b: 0.984145, a: 1}
+    - _CloudShade: {r: 0.872597, g: 0.856510, b: 0.699014, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

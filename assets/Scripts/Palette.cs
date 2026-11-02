@@ -44,6 +44,9 @@ namespace UwuStack
         {
             public Color SkyTop, SkyHorizon, SkyBottom;
             public float Glow, Stars, Clouds;
+            // The sky shader's meteors, and how strongly it lays on its
+            // cumulus and cirrus layers.
+            public float Meteors, Cumulus, Cirrus;
             public Color WaterDeep, WaterShallow, WaterFoam;
             public float Glint;
             public Color Sand, Grass, Rock;
@@ -73,7 +76,10 @@ namespace UwuStack
                 look.Ambient = 1.0f;
                 look.Sun = 1.2f;
                 look.Stars = 0.9f;
-                look.Clouds = 0.12f;
+                look.Clouds = 0.7f;
+                look.Meteors = 0.9f;
+                look.Cumulus = 0.7f;
+                look.Cirrus = 0.3f;
                 look.Sand = Hex(0xa89a78);
                 look.Grass = Hex(0x6f9a62);
                 look.Foliage = 0.7f;
@@ -90,8 +96,11 @@ namespace UwuStack
                 look.Glow = 0.35f;
                 look.Ambient = 1.5f;
                 look.Sun = 1.7f;
-                look.Stars = 0.7f;
-                look.Clouds = 0.42f;
+                look.Stars = 0.6f;
+                look.Clouds = 0.85f;
+                look.Meteors = 0f;
+                look.Cumulus = 0.85f;
+                look.Cirrus = 0.55f;
                 look.Sand = Hex(0xe9d7a8);
                 look.Grass = Hex(0x9fcf8f);
                 look.Foliage = 1f;
@@ -100,6 +109,24 @@ namespace UwuStack
             look.AmbientSky = Mix(look.SkyTop, Color.white, 0.6f);
             look.AmbientGround = Hex(0x8a8a9a);
             return look;
+        }
+
+        // The clouds' colours from the eased sky: the sky shader's lit and
+        // shaded cloud, and the tint of the cloud sprites.
+        public static void CloudColours(bool dark, Color top, Color horizon, out Color lit, out Color shade, out Color sprite)
+        {
+            if (dark)
+            {
+                lit = Mix(horizon, Color.white, 0.22f);
+                shade = Mix(top, horizon, 0.45f);
+                sprite = Mix(horizon, Color.white, 0.3f);
+            }
+            else
+            {
+                lit = Mix(Color.white, horizon, 0.08f);
+                shade = (Mix(top, Color.white, 0.3f).linear * 0.9f).gamma;
+                sprite = Mix(Color.white, horizon, 0.1f);
+            }
         }
 
         // The splash's drops: the shallows washed with foam.

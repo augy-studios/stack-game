@@ -56,6 +56,9 @@ const WATER_DEEP = hsl(0.55, 0.5, 0.55);
 const WATER_SHALLOW = hsl(0.49, 0.5, 0.7);
 const WATER_FOAM = mix([1, 1, 1], SKY_HORIZON, 0.12);
 const DROP = mix(WATER_SHALLOW, WATER_FOAM, 0.75);
+const CLOUD_LIT = mix([1, 1, 1], SKY_HORIZON, 0.08);
+const CLOUD_SHADE = mix(SKY_TOP, [1, 1, 1], 0.3).map((x) => toSrgb(toLinear(x) * 0.9));
+const CLOUD_TINT = mix([1, 1, 1], SKY_HORIZON, 0.1);
 
 /* ---- shaders ---- */
 
@@ -106,7 +109,6 @@ function textureMeta(rel, { sprite = false, wrap = 1, mipmaps = 1 } = {}) {
 `);
 }
 textureMeta("Textures/Cloud.png");
-textureMeta("Textures/Stars.png", { mipmaps: 0 });
 for (const dir of ["Icons/UI", "Icons/App"]) {
   for (const f of fs.readdirSync(path.join(out, dir)).filter((f) => f.endsWith(".png"))) textureMeta(`${dir}/${f}`, { sprite: true });
 }
@@ -185,9 +187,8 @@ material("Water", "Water", {
   floats: { _Glint: 1, _Near: 14, _Far: 70, _Level: -1.6, _Shore: -1, _LowQuality: 0 },
 });
 material("Sky", "Sky", {
-  colours: { _TopColor: colour(SKY_TOP), _HorizonColor: colour(SKY_HORIZON), _BottomColor: colour(SKY_BOTTOM) },
-  floats: { _Glow: 0.35, _StarsOpacity: 0.7 },
-  textures: { _StarsTex: texture("Textures/Stars.png") },
+  colours: { _TopColor: colour(SKY_TOP), _HorizonColor: colour(SKY_HORIZON), _BottomColor: colour(SKY_BOTTOM), _CloudLit: colour(CLOUD_LIT), _CloudShade: colour(CLOUD_SHADE) },
+  floats: { _Glow: 0.35, _StarsOpacity: 0.6, _Meteors: 0, _Cumulus: 0.85, _Cirrus: 0.55, _Pan: 0, _LowQuality: 0 },
 });
 const unlit = (name, { colour: c = [1, 1, 1], alpha = 1, cull = 0, zwrite = 0, vertexColours = false, map = null }) =>
   material(name, "UnlitTransparent", {
@@ -200,7 +201,7 @@ unlit("SplashCrown", { colour: WATER_FOAM, alpha: 0.8, vertexColours: true });
 unlit("SplashDrop", { colour: DROP, alpha: 0.9, cull: 2, zwrite: 1 });
 unlit("PerfectRingFrame", { alpha: 0.95 });
 unlit("PerfectRingPlate", { alpha: 0.32 });
-unlit("Cloud", { alpha: 0.42, map: "Textures/Cloud.png" });
+unlit("Cloud", { colour: CLOUD_TINT, alpha: 0.85, map: "Textures/Cloud.png" });
 
 /* ---- meshes: their embedded materials swapped for Materials/ ---- */
 

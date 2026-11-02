@@ -30,7 +30,8 @@ the browser and the server always agree on a game.
 | `sim.js` | The game as data: a seed, the settings and the tap times in, every landing, cut, growth, the water and the score out. |
 | `record.js` | A game as it is kept, sent and shared, and the token a long replay link carries. |
 | `fall.js` | Cut-off pieces tipping, knocking against wider layers and splashing, worked out once in fixed steps so they fall the same way live and in the replay. |
-| `scene.js` | The three.js world: the gradient sky, stars and clouds, the water, the island, the tower, the slab, the pieces and the perfect rings. |
+| `clouds.js` | Draws the cumulus cloud sprites on a canvas, with no imports, so the Unity export draws the same ones. |
+| `scene.js` | The three.js world: the gradient sky with its drifting cumulus and cirrus, twinkling stars and night meteors, the cloud sprites, the water, the island, the tower, the slab, the pieces and the perfect rings. |
 | `view.js` | Turns a game at a moment into what the scene draws and the speakers play, for the live game and the replay alike. |
 | `audio.js` | Every sound. A falling piece's knock, a grown layer's slide, the splash and the water's loop are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
 | `game.js` | The game screen: the start panel, play, the result, submitting, sharing, and shared replays. |
