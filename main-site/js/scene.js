@@ -72,23 +72,80 @@ function layerColour(seedNum, n, out = new THREE.Color()) {
 
 /* ---- textures and geometry made here, so nothing has to be fetched ---- */
 
-function cloudTexture() {
+// A cumulus cloud, as a camera-facing sprite: a heap of soft puffs, highest
+// in the middle and squared off along a flat base, the way fair-weather
+// cumulus look. The tops are lit and the base is in its own shade, a
+// little bluer. Drawn white and grey, so the material's colour tints it
+// for the theme. Each variant heaps its puffs differently.
+function cloudTexture(variant) {
+  const W = 256;
+  const H = 128;
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 64;
+  c.width = W;
+  c.height = H;
   const g = c.getContext("2d");
-  const blob = (x, y, r) => {
-    const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, "rgba(255,255,255,0.9)");
-    grad.addColorStop(1, "rgba(255,255,255,0)");
-    g.fillStyle = grad;
+  let s = 7919 * (variant + 1);
+  const rand = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
+  const base = H * 0.78;
+
+  // The puffs: a row along the base, then smaller ones heaped on top,
+  // under a dome that is tallest a little off centre.
+  const puffs = [];
+  const peak = 0.4 + rand() * 0.2;
+  const tall = 0.75 + rand() * 0.35;
+  for (let i = 0; i < 7; i++) {
+    const u = 0.16 + (i / 6) * 0.68 + (rand() - 0.5) * 0.06;
+    const dome = Math.max(0, 1 - ((u - peak) / 0.5) ** 2);
+    const r = H * (0.14 + 0.1 * dome + rand() * 0.05);
+    puffs.push({ x: u * W, y: base - r * 0.7, r });
+  }
+  for (let i = 0; i < 18; i++) {
+    const u = 0.18 + rand() * 0.64;
+    const dome = Math.max(0, 1 - ((u - peak) / 0.38) ** 2);
+    if (dome <= 0.08) continue;
+    const r = H * (0.11 + 0.1 * dome + 0.06 * rand());
+    const y = base - r * 0.9 - dome * tall * H * 0.36 * (0.6 + rand() * 0.4);
+    puffs.push({ x: u * W, y, r });
+  }
+
+  // Each puff is a soft disc: whiter towards its upper side, where the sun
+  // catches it, and greyer below.
+  for (const { x, y, r } of puffs) {
+    const shade = g.createRadialGradient(x, y + r * 0.2, 0, x, y + r * 0.2, r);
+    shade.addColorStop(0, "rgba(214,222,238,1)");
+    shade.addColorStop(0.72, "rgba(214,222,238,0.9)");
+    shade.addColorStop(1, "rgba(214,222,238,0)");
+    g.fillStyle = shade;
     g.beginPath();
     g.arc(x, y, r, 0, Math.PI * 2);
     g.fill();
-  };
-  blob(40, 38, 26);
-  blob(66, 30, 30);
-  blob(92, 38, 24);
+  }
+  for (const { x, y, r } of puffs) {
+    const lit = g.createRadialGradient(x - r * 0.15, y - r * 0.3, 0, x - r * 0.15, y - r * 0.3, r * 1.05);
+    lit.addColorStop(0, "rgba(255,255,255,1)");
+    lit.addColorStop(0.6, "rgba(255,255,255,0.85)");
+    lit.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = lit;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // The base: a darker band along the bottom, then cut flat and soft.
+  g.globalCompositeOperation = "source-atop";
+  const under = g.createLinearGradient(0, base - H * 0.22, 0, base);
+  under.addColorStop(0, "rgba(180,192,214,0)");
+  under.addColorStop(1, "rgba(180,192,214,0.4)");
+  g.fillStyle = under;
+  g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = "destination-in";
+  const cut = g.createLinearGradient(0, base - 6, 0, base + 3);
+  cut.addColorStop(0, "rgba(0,0,0,1)");
+  cut.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = cut;
+  g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = "source-over";
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -209,6 +266,16 @@ function crownGeometry() {
 // The sky is drawn flat across the screen behind the world, top to bottom,
 // so the whole gradient shows whichever way the camera looks, with a soft
 // glow low in the middle where the light is.
+//
+// Over it, everything is worked out per pixel so nothing has to be fetched:
+//   stars    one or none in each cell of a grid, twinkling
+//   meteors  now and then a shooting star, at night
+//   cirrus   thin, unshaded streaks of high cloud, like combed hair
+//   cumulus  heaped clouds lower down, lit on top and shaded underneath
+// The two cloud layers are laid on flat planes overhead, seen in
+// perspective, so they bunch up and thin out towards the horizon and the
+// wind carries them towards and across the camera. Turning the camera pans
+// them, and the stars, round with it.
 const SKY_VERTEX = `
   varying vec2 vUv;
   void main() {
@@ -222,14 +289,136 @@ const SKY_FRAGMENT = `
   uniform vec3 uBottom;
   uniform float uGlow;
   uniform float uAspect;
+  uniform float uTime;
+  uniform float uPan;
+  uniform float uPanPx;
+  uniform float uPixel;
+  uniform float uStars;
+  uniform float uMeteors;
+  uniform vec3 uCloudLit;
+  uniform vec3 uCloudShade;
+  uniform float uCumulus;
+  uniform float uCirrus;
   varying vec2 vUv;
+
+  float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    mat2 turn = mat2(0.8, 0.6, -0.6, 0.8);
+    for (int i = 0; i < OCTAVES; i++) {
+      v += a * noise(p);
+      p = turn * p * 2.03 + 17.1;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // How much cumulus there is at a point on its plane: big slow shapes for
+  // where the clouds are, and finer billows that churn as they go.
+  float cumulus(vec2 p) {
+    float shape = fbm(p * 0.55);
+    float billow = fbm(p * 1.7 + vec2(uTime * 0.02, -uTime * 0.015));
+    return shape * 0.75 + billow * 0.35;
+  }
+
+  // The distance from p to the segment a to b.
+  float segment(vec2 p, vec2 a, vec2 b) {
+    vec2 pa = p - a;
+    vec2 ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
+  }
+
   void main() {
     float y = vUv.y;
     vec3 c = y > 0.45
       ? mix(uHorizon, uTop, smoothstep(0.45, 1.0, y))
       : mix(uBottom, uHorizon, smoothstep(0.0, 0.45, y));
     vec2 d = vec2((vUv.x - 0.5) * uAspect, y - 0.52);
-    c = mix(c, vec3(1.0), uGlow * exp(-dot(d, d) * 5.0));
+    float glow = exp(-dot(d, d) * 5.0);
+    c = mix(c, vec3(1.0), uGlow * glow);
+
+    // Stars: a grid of cells in screen pixels, a star in some of them,
+    // fewer towards the horizon, each twinkling at its own pace.
+    vec2 px = gl_FragCoord.xy / uPixel + vec2(uPanPx, 0.0);
+    vec2 cell = floor(px / 26.0);
+    float pick = hash(cell);
+    float above = smoothstep(0.3, 1.0, y);
+    if (pick < 0.32 * above) {
+      vec2 at = (cell + 0.2 + 0.6 * vec2(hash(cell + 3.1), hash(cell + 7.7))) * 26.0;
+      float size = 0.7 + 0.8 * hash(cell + 11.3);
+      float twinkle = 0.55 + 0.45 * sin(uTime * (1.2 + 2.5 * hash(cell + 5.9)) + pick * 60.0);
+      float star = 1.0 - smoothstep(size * 0.5, size + 0.6, length(px - at));
+      c = mix(c, vec3(1.0), star * twinkle * uStars);
+    }
+
+    // Meteors: two slots, each now and then streaking a short way down
+    // across the upper sky and fading as it goes.
+    vec2 sp = vec2(vUv.x * uAspect, y);
+    for (int i = 0; i < 2; i++) {
+      float period = 7.0 + float(i) * 4.0;
+      float k = floor(uTime / period + float(i) * 0.5);
+      float age = uTime - (k - float(i) * 0.5) * period;
+      float life = 0.9;
+      if (age < life && hash(vec2(k, float(i))) < 0.7) {
+        vec2 start = vec2((0.15 + 0.7 * hash(vec2(k, 2.0 + float(i)))) * uAspect, 0.72 + 0.25 * hash(vec2(k, 9.0)));
+        vec2 dir = normalize(vec2(hash(vec2(k, 4.0)) < 0.5 ? -1.0 : 1.0, -0.55));
+        float run = age / life;
+        vec2 head = start + dir * run * 0.45;
+        vec2 tail = head - dir * 0.12 * min(1.0, run * 4.0);
+        float dist = segment(sp, tail, head);
+        float along = clamp(dot(sp - tail, dir) / 0.12, 0.0, 1.0);
+        float m = (1.0 - smoothstep(0.0, 0.0025, dist)) * along * (1.0 - run);
+        c = mix(c, vec3(1.0), m * uMeteors);
+      }
+    }
+
+    float h = y - 0.4;
+    if (h > 0.0) {
+      // Cirrus, on a high plane: streaks drawn out along the wind, combed
+      // by a slower noise, in patches that come and go.
+      float far = 1.0 / (h + 0.25);
+      vec2 q = vec2((vUv.x - 0.5 + uPan) * uAspect * far * 1.2, far * 2.0);
+      q += vec2(uTime * 0.012, uTime * 0.02);
+      vec2 comb = vec2(fbm(q * 0.6), fbm(q * 0.6 + 5.2));
+      float streak = fbm(vec2(q.x * 0.9, q.y * 5.0) + comb * 1.6);
+      float patches = smoothstep(0.35, 0.65, fbm(q * 0.35 - 3.0));
+      float cirrus = smoothstep(0.5, 0.8, streak) * patches * smoothstep(0.02, 0.25, h);
+      c = mix(c, uCloudLit, cirrus * uCirrus);
+
+      // Cumulus, on a lower plane: the wind brings them in from the
+      // distance. Shaded where there is more cloud just above (their
+      // undersides) and lit where there is less (their tops).
+      float near = 1.0 / (h + 0.08);
+      vec2 p = vec2((vUv.x - 0.5 + uPan) * uAspect * near * 0.9, near * 1.4);
+      p += vec2(uTime * 0.03, uTime * 0.05);
+      float dens = cumulus(p);
+      float body = smoothstep(0.5, 0.6, dens);
+      if (body > 0.0) {
+        float upper = cumulus(p + vec2(0.0, 0.35));
+        float under = smoothstep(-0.02, 0.12, upper - dens) * smoothstep(0.03, 0.3, h);
+        vec3 cloud = mix(uCloudLit, uCloudShade, clamp(under + (1.0 - body) * 0.3, 0.0, 1.0));
+        // Thin edges let the sun through, near the glow.
+        cloud = mix(cloud, vec3(1.0), glow * uGlow * (1.0 - body) * 1.5);
+        float haze = smoothstep(0.0, 0.18, h);
+        c = mix(c, cloud, body * haze * uCumulus);
+      }
+    }
+
     gl_FragColor = vec4(c, 1.0);
     #include <colorspace_fragment>
   }
@@ -458,39 +647,54 @@ export function createScene(canvas, { quality = "high" } = {}) {
     uBottom: { value: new THREE.Color() },
     uGlow: { value: 0.3 },
     uAspect: { value: 1 },
+    uTime: { value: 0 },
+    uPan: { value: 0 },
+    uPanPx: { value: 0 },
+    uPixel: { value: 1 },
+    uStars: { value: 0.6 },
+    uMeteors: { value: 0 },
+    uCloudLit: { value: new THREE.Color(1, 1, 1) },
+    uCloudShade: { value: new THREE.Color(0.8, 0.84, 0.92) },
+    uCumulus: { value: 0.8 },
+    uCirrus: { value: 0.5 },
   };
-  back.add(
-    new THREE.Mesh(
-      new THREE.PlaneGeometry(2, 2),
-      new THREE.ShaderMaterial({
-        uniforms: skyUniforms,
-        vertexShader: SKY_VERTEX,
-        fragmentShader: SKY_FRAGMENT,
-        depthWrite: false,
-        depthTest: false,
-      })
-    )
-  );
+  const skyMat = new THREE.ShaderMaterial({
+    uniforms: skyUniforms,
+    vertexShader: SKY_VERTEX,
+    fragmentShader: SKY_FRAGMENT,
+    defines: { OCTAVES: 5 },
+    depthWrite: false,
+    depthTest: false,
+  });
+  back.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), skyMat));
 
-  // Stars, scattered across the screen and fewer towards the bottom.
-  const starGeo = new THREE.BufferGeometry();
-  {
-    const pts = [];
-    let s = 12345;
-    const rand = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
-    for (let i = 0; i < 220; i++) pts.push(rand() * 2 - 1, 1 - 2 * rand() ** 1.6, 0);
-    starGeo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-  }
-  const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false });
-  back.add(new THREE.Points(starGeo, starMat));
-
-  const cloudMat = new THREE.SpriteMaterial({ map: cloudTexture(), transparent: true, opacity: 0.4, depthWrite: false, fog: false });
+  // Cumulus nearer by, in the world: sprites the wind carries across, at a
+  // few heights round the camera's, fading in as they come over the far
+  // edge and out as they go, and out of the way of the tower and the
+  // camera. Each billows a little as it goes.
+  const WIND = new THREE.Vector2(0.94, 0.34);
+  const ACROSS = new THREE.Vector2(-WIND.y, WIND.x);
+  const SPAN = 26;
+  const cloudMaps = [0, 1, 2, 3, 4].map(cloudTexture);
+  const cloudTint = new THREE.Color(1, 1, 1);
+  let cloudOpacity = 0.85;
   const clouds = [];
-  for (let i = 0; i < 9; i++) {
-    const sprite = new THREE.Sprite(cloudMat);
-    const angle = (i / 9) * Math.PI * 2 + 0.4;
-    sprite.userData = { angle, radius: 7 + (i % 3) * 3.5, rise: ((i * 37) % 11) - 5, speed: 0.012 + (i % 4) * 0.004 };
-    sprite.scale.set(5 + (i % 3) * 1.5, 2.5 + (i % 3) * 0.75, 1);
+  for (let i = 0; i < 16; i++) {
+    let r = 1013 * (i + 1);
+    const rand = () => ((r = (Math.imul(r, 1103515245) + 12345) >>> 0) / 4294967296);
+    rand();
+    const mat = new THREE.SpriteMaterial({ map: cloudMaps[i % cloudMaps.length], transparent: true, depthWrite: false, fog: false });
+    const sprite = new THREE.Sprite(mat);
+    const size = 4 + rand() * 4;
+    sprite.userData = {
+      along: rand() * SPAN * 2 - SPAN,
+      across: (rand() * 2 - 1) * SPAN * 0.9,
+      rise: 0.5 + rand() * 5,
+      speed: 0.25 + rand() * 0.35,
+      w: size,
+      h: size * 0.5,
+      phase: rand() * 6.28,
+    };
     clouds.push(sprite);
     scene.add(sprite);
   }
@@ -802,6 +1006,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     }
   }
 
+  const WHITE = new THREE.Color(0xffffff);
   function applyLook(h, ease) {
     skyTargets(h);
     look.top.lerp(targetTop, ease);
@@ -821,8 +1026,14 @@ export function createScene(canvas, { quality = "high" } = {}) {
       skyUniforms.uGlow.value = 0.08;
       hemi.intensity = 1.0;
       sun.intensity = 1.2;
-      starMat.opacity = 0.9;
-      cloudMat.opacity = 0.12;
+      skyUniforms.uStars.value = 0.9;
+      skyUniforms.uMeteors.value = 0.9;
+      skyUniforms.uCloudLit.value.copy(look.horizon).lerp(WHITE, 0.22);
+      skyUniforms.uCloudShade.value.copy(look.top).lerp(look.horizon, 0.45);
+      skyUniforms.uCumulus.value = 0.7;
+      skyUniforms.uCirrus.value = 0.3;
+      cloudTint.copy(look.horizon).lerp(WHITE, 0.3);
+      cloudOpacity = 0.7;
       sandMat.color.setHex(0xa89a78);
       grassMat.color.setHex(0x6f9a62);
       foliageMat.color.setScalar(0.7);
@@ -834,13 +1045,19 @@ export function createScene(canvas, { quality = "high" } = {}) {
       skyUniforms.uGlow.value = 0.35;
       hemi.intensity = 1.5;
       sun.intensity = 1.7;
-      starMat.opacity = 0.7;
-      cloudMat.opacity = 0.42;
+      skyUniforms.uStars.value = 0.6;
+      skyUniforms.uMeteors.value = 0;
+      skyUniforms.uCloudLit.value.copy(WHITE).lerp(look.horizon, 0.08);
+      skyUniforms.uCloudShade.value.copy(look.top).lerp(WHITE, 0.3).multiplyScalar(0.9);
+      skyUniforms.uCumulus.value = 0.85;
+      skyUniforms.uCirrus.value = 0.55;
+      cloudTint.copy(WHITE).lerp(look.horizon, 0.1);
+      cloudOpacity = 0.85;
       sandMat.color.setHex(0xe9d7a8);
       grassMat.color.setHex(0x9fcf8f);
       foliageMat.color.setScalar(1);
     }
-    hemi.color.copy(look.top).lerp(new THREE.Color(0xffffff), 0.6);
+    hemi.color.copy(look.top).lerp(WHITE, 0.6);
   }
 
   /* ---- quality ---- */
@@ -855,6 +1072,9 @@ export function createScene(canvas, { quality = "high" } = {}) {
     water.geometry = new THREE.PlaneGeometry(260, 260, low ? 96 : 256, low ? 96 : 256);
     water.material.defines = low ? { LOW: 1 } : {};
     water.material.needsUpdate = true;
+    skyMat.defines.OCTAVES = low ? 3 : 5;
+    skyMat.needsUpdate = true;
+    clouds.forEach((c, i) => { c.userData.shown = !low || i % 2 === 0; });
   }
 
   /* ---- where the water meets things ---- */
@@ -1147,12 +1367,35 @@ export function createScene(canvas, { quality = "high" } = {}) {
     sun.position.set(target.x - 2.2, target.y + 5, target.z + 3.4);
     sun.target.position.copy(target);
 
-    clouds.forEach((c) => {
+    const fx = cam.x;
+    const fz = cam.z;
+    for (const c of clouds) {
       const u = c.userData;
-      const a = u.angle + clock * u.speed;
-      c.position.set(Math.cos(a) * u.radius, cam.y + u.rise * 0.6 - 1.5, Math.sin(a) * u.radius);
-    });
+      c.visible = u.shown;
+      if (!u.shown) continue;
+      // Along the wind, wrapping round past the far edge.
+      const a = (((u.along + clock * u.speed + SPAN) % (2 * SPAN)) + 2 * SPAN) % (2 * SPAN) - SPAN;
+      const x = fx + WIND.x * a + ACROSS.x * u.across;
+      const z = fz + WIND.y * a + ACROSS.y * u.across;
+      const bob = Math.sin(clock * 0.2 + u.phase) * 0.15;
+      c.position.set(x, cam.y + u.rise + bob, z);
+      const breathe = 1 + Math.sin(clock * 0.13 + u.phase * 2) * 0.05;
+      c.scale.set(u.w * breathe, u.h * (2 - breathe), 1);
+      const edge = 1 - THREE.MathUtils.smoothstep(Math.abs(a), SPAN * 0.7, SPAN);
+      const fromTower = Math.hypot(x - fx, z - fz);
+      const fromCamera = c.position.distanceTo(camera.position);
+      const clear = THREE.MathUtils.smoothstep(fromTower, 3, 6) * THREE.MathUtils.smoothstep(fromCamera, u.w, u.w * 2);
+      c.material.opacity = cloudOpacity * edge * clear;
+      c.material.color.copy(cloudTint);
+    }
 
+    // The sky's own clouds and stars pan as the camera turns: a turn the
+    // width of the view moves them a screen across.
+    const across = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * camera.aspect);
+    skyUniforms.uPan.value = -orb.yaw / across;
+    skyUniforms.uPanPx.value = skyUniforms.uPan.value * width;
+    skyUniforms.uTime.value = clock;
+    skyUniforms.uPixel.value = renderer.getPixelRatio();
     skyUniforms.uAspect.value = camera.aspect;
     renderer.clear();
     renderer.render(back, backCamera);
