@@ -20,11 +20,11 @@ import * as THREE from "three";
 const LEVELS = 5;
 const THRESHOLD = 0.92;
 const KNEE = 0.45;
-const BLOOM = 0.24;
+const BLOOM = 0.4;
 const CEILING = 3;
 const SATURATION = 1.06;
 const CONTRAST = 1.04;
-const VIGNETTE = 0.16;
+const VIGNETTE = 0.25;
 
 const VERTEX = /* glsl */ `
   varying vec2 vUv;

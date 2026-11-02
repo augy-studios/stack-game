@@ -52,7 +52,8 @@ same way, so everything lines up. Use it, not your own conversion.
    `WaterLow.fbx` and tick *Low Quality* on `Materials/Water` for slower
    devices. `WaterHigh` has 66,049 vertices, so it needs 32-bit indices
    (Unity picks them automatically).
-5. On the camera: `TowerCamera`. On empty objects: `SceneLook`,
+5. On the camera: `TowerCamera` and `PostLook` (turn **HDR** on in the URP
+   Asset so the bloom has something past white to find). On empty objects: `SceneLook`,
    `CloudDrift`, `Splashes` and `GameAudio`, with their fields filled in.
 
 Tower layers are `Meshes/Block.fbx` with `Materials/Block`, scaled to
@@ -75,6 +76,7 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 | `PerfectRing` | The frame and plate that spread from a perfect drop |
 | `LayerGrow` | A layer's side easing back out after a run of perfects |
 | `CloudDrift` | The sixteen cumulus sprites the wind carries past the tower, fading in and out |
+| `PostLook` | High quality's post-processing on URP's own effects: bloom, colour, vignette and dither, as `js/post.js`; off with *Low Quality* |
 | `TowerCamera` | The follow camera, overview and free-camera offsets |
 | `GameAudio` | Every sound at the game's levels and pitches, and the water loop dulling with distance |
 
