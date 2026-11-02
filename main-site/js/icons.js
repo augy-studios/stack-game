@@ -51,9 +51,7 @@ export const icons = {
   layers: svg(`<path d="m12 4 8.5 4.2L12 12.4 3.5 8.2Z"/><path d="m3.5 12.2 8.5 4.2 8.5-4.2M3.5 16.2l8.5 4.2 8.5-4.2"/>`),
   water: svg(`<path d="M3 15c2 0 2-1.5 4.5-1.5S9.5 15 12 15s2-1.5 4.5-1.5S18.5 15 21 15M3 19c2 0 2-1.5 4.5-1.5S9.5 19 12 19s2-1.5 4.5-1.5S18.5 19 21 19"/><path d="M12 3.5s-3.5 4-3.5 6.2a3.5 3.5 0 0 0 7 0C15.5 7.5 12 3.5 12 3.5Z"/>`),
 
-  // Full screen, and the Edge Tray.
-  expand: svg(`<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>`),
-  shrink: svg(`<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>`),
+  // The Edge Tray.
   chevron: svg(`<path d="m9 5 7 7-7 7"/>`),
 };
 

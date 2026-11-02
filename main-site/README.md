@@ -38,7 +38,7 @@ the browser and the server always agree on a game.
 | `party.js` | Races on one network, on top of `net.js`. |
 | `net.js` | Pairing over PeerJS, STUN only, from `STUN-p2p-spec.md`, after uwuChess's. |
 | `qr.js` | QR encoder for the join link, from uwuPromptr, so it works offline. |
-| `tray.js`, `fullscreen.js` | The Edge Tray, and full screen. |
+| `tray.js` | The Edge Tray. |
 | `freecam.js` | The replay's free camera: drag, pinch and scroll to look round the tower. |
 | `api.js`, `leaderboard.js`, `settings.js` | The API client, and the leaderboard and settings windows, after MRT Station Guesser's. |
 | `theme.js`, `icons.js`, `ui.js`, `update-bar.js`, `app.js` | Theme, inline SVG icons, modal and storage helpers, the update bar, and boot. |
@@ -91,12 +91,10 @@ so the score grows with the game. Then:
 The game's total is then scaled by the mode, the game length, and the time
 survived: 1% more for every 6 seconds, up to 50% at five minutes.
 
-**Full screen.** The game always fills the window. Real full screen comes
-only from the tray's button; starting a game never asks for it. Safari on
-iPhone lets only video go full screen, so there the game fills the window;
-added to the home screen, it opens full screen.
+**The window.** The game always fills the window, with no header or footer.
+Added to the home screen, it opens full screen.
 
-**The Edge Tray**, top right, per `edge-tray-spec.md`: full screen, sound,
+**The Edge Tray**, top right, per `edge-tray-spec.md`: sound,
 races, the leaderboard, settings, the theme, and the coffee link. Its tab
 slides it off the edge, and the choice is remembered.
 

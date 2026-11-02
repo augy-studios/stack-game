@@ -2,7 +2,6 @@ import { COLOR_THEMES, applyColorTheme, applyMode, getStoredColorTheme, getStore
 import { hydrateIcons, openModal, closeModal, closeTopModal } from "./ui.js";
 import { initUpdateBar } from "./update-bar.js";
 import { initTray } from "./tray.js";
-import { initFullscreen } from "./fullscreen.js";
 import { initLeaderboard } from "./leaderboard.js";
 import { initSettings } from "./settings.js";
 import { initGame, openShared, showMenu, toast } from "./game.js";
@@ -137,7 +136,6 @@ function boot() {
   buildThemeModal();
   wireModals();
   initTray();
-  initFullscreen();
   initLeaderboard();
   initSettings();
   initGame({ onRace: openParty });
