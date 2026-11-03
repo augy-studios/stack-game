@@ -115,10 +115,14 @@ namespace UwuStack
             RenderTexture before = RenderTexture.active;
             try
             {
-                Render(rt);
-                // No font at all, which Unity should never be without, still
-                // saves the picture, just without its band.
-                if (info != null && Face) Caption(rt, info);
+                // The band is laid out first, so the camera can be framed
+                // above it. No font at all, which Unity should never be
+                // without, still saves the picture, just without its band.
+                ShotCaption.Plan plan = info != null && Face
+                    ? ShotCaption.Lay(size.x, size.y, info, address, icon != null, Measure)
+                    : null;
+                Render(rt, plan != null ? plan.BandHeight / (float)size.y : 0);
+                if (plan != null) Caption(rt, plan);
                 pixels = new Texture2D(size.x, size.y, TextureFormat.RGB24, false);
                 RenderTexture.active = rt;
                 pixels.ReadPixels(new Rect(0, 0, size.x, size.y), 0, 0, false);
@@ -157,11 +161,23 @@ namespace UwuStack
         // The camera's view into rt, with post-processing, and without any
         // canvas on the UI layer: overlay canvases are never drawn by a
         // camera, and a camera-space one would be.
-        void Render(RenderTexture rt)
+        //
+        // band is the share of the picture's height the caption covers. All
+        // of what the player sees goes above it: the view keeps its top edge
+        // and widens down and to the sides, so nothing they framed is hidden
+        // behind the words and nobody has to frame round them.
+        void Render(RenderTexture rt, float band)
         {
             int mask = cam.cullingMask;
             int ui = LayerMask.NameToLayer("UI");
             if (ui >= 0) cam.cullingMask = mask & ~(1 << ui);
+            bool framed = band > 0 && !cam.orthographic;
+            if (framed)
+            {
+                float t = cam.nearClipPlane * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+                ShotCaption.Frustum(t, t * cam.aspect, band, out float l, out float r, out float b, out float top);
+                cam.projectionMatrix = Matrix4x4.Frustum(l, r, b, top, cam.nearClipPlane, cam.farClipPlane);
+            }
             try
             {
                 var request = new RenderPipeline.StandardRequest { destination = rt };
@@ -180,6 +196,7 @@ namespace UwuStack
             finally
             {
                 cam.cullingMask = mask;
+                if (framed) cam.ResetProjectionMatrix();
             }
         }
 
@@ -198,10 +215,9 @@ namespace UwuStack
             return w;
         }
 
-        void Caption(RenderTexture rt, ShotInfo info)
+        void Caption(RenderTexture rt, ShotCaption.Plan plan)
         {
             Font f = Face;
-            ShotCaption.Plan plan = ShotCaption.Lay(rt.width, rt.height, info, address, icon != null, Measure);
 
             // Every character first: asking for more can rebuild the font's
             // texture, which moves the ones already asked for. Again if it did.

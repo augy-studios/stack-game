@@ -9,6 +9,10 @@
 // corner. Everything is sized from the picture's shorter side, so it reads
 // the same on a wide 4K picture and a tall phone one, and a line too long
 // for the width is set smaller rather than cut.
+//
+// The scene is framed round the band rather than under it: js/scene.js
+// zooms out just enough that everything the player could see on screen
+// fits above it, so nothing they framed is hidden behind the words.
 
 const BRAND = "uwuStack";
 const ICON = "/RST-192.png";
@@ -65,22 +69,23 @@ function fit(ctx, text, size, family, room) {
   return smaller;
 }
 
-export async function caption(canvas, info) {
-  const ctx = canvas.getContext("2d");
-  const { width: W, height: H } = canvas;
+// Fonts and the icon, ready before the picture is drawn: the band is laid
+// out, and the scene framed round it, in the same frame as the draw, which
+// cannot wait for either.
+let icon = null;
+export async function prepare() {
+  const family = getComputedStyle(document.body).fontFamily || "sans-serif";
+  await document.fonts?.load(`50px ${family}`).catch(() => null);
+  icon = await loadIcon();
+}
+
+// Where everything in the band goes on a W x H picture, and how tall the
+// band is, which js/scene.js keeps clear of what the player could see.
+export function layout(W, H, info) {
+  const ctx = document.createElement("canvas").getContext("2d");
   const u = Math.min(W, H) / 1080;
   const family = getComputedStyle(document.body).fontFamily || "sans-serif";
-  const dark = document.documentElement.dataset.mode === "dark";
-  const ink = cssVar("--ink", dark ? "#eef2ef" : "#121815");
-  const muted = cssVar("--muted", dark ? "#9aa7a0" : "#5b665f");
-  const brand = cssVar("--brand-ink", dark ? "#bff5cf" : "#1f6b3d");
-
-  const sizes = { title: Math.round(50 * u), result: Math.round(31 * u), detail: Math.round(25 * u) };
-  await Promise.all(
-    [...new Set(Object.values(sizes))].map((s) => document.fonts?.load(`${s}px ${family}`).catch(() => null))
-  );
-  const icon = await loadIcon();
-
+  const sizes = { title: Math.round(50 * u), result: Math.round(31 * u), detail: Math.round(25 * u), brand: Math.round(40 * u) };
   const text = lines(info);
   const pad = Math.round(34 * u);
   const gap = Math.round(30 * u);
@@ -89,7 +94,7 @@ export async function caption(canvas, info) {
   // The corner: the icon, the name and the address. On a picture too
   // narrow for it beside the words, it drops to its own row under them.
   const iconSize = Math.round(76 * u);
-  ctx.font = `${Math.round(40 * u)}px ${family}`;
+  ctx.font = `${sizes.brand}px ${family}`;
   const brandW = ctx.measureText(BRAND).width;
   ctx.font = `${sizes.detail}px ${family}`;
   const hostW = ctx.measureText(host).width;
@@ -102,15 +107,27 @@ export async function caption(canvas, info) {
   const room = beside ? W - pad * 2 - gap - cornerW : W - pad * 2;
 
   const rows = [
-    { text: text.title, size: fit(ctx, text.title, sizes.title, family, room), color: brand },
-    { text: text.result, size: fit(ctx, text.result, sizes.result, family, room), color: ink },
-    { text: text.detail, size: fit(ctx, text.detail, sizes.detail, family, room), color: muted },
+    { text: text.title, size: fit(ctx, text.title, sizes.title, family, room), ink: "brand" },
+    { text: text.result, size: fit(ctx, text.result, sizes.result, family, room), ink: "ink" },
+    { text: text.detail, size: fit(ctx, text.detail, sizes.detail, family, room), ink: "muted" },
   ];
   const lead = 1.32;
   const wordsH = rows.reduce((h, r) => h + r.size * lead, 0) - rows[rows.length - 1].size * (lead - 1);
   const footH = beside ? 0 : Math.round(sizes.detail * 1.9);
   const bandH = Math.round(pad * 2 + Math.max(wordsH, beside ? iconSize : 0) + footH);
-  const top = H - bandH;
+  return { W, H, u, family, sizes, pad, host, iconSize, brandW, hostW, beside, rows, lead, wordsH, bandH, top: H - bandH };
+}
+
+// Draws the band laid out by layout() onto the picture.
+export function caption(canvas, plan) {
+  const ctx = canvas.getContext("2d");
+  const { W, u, family, sizes, pad, host, iconSize, brandW, hostW, beside, rows, lead, wordsH, bandH, top } = plan;
+  const dark = document.documentElement.dataset.mode === "dark";
+  const inks = {
+    ink: cssVar("--ink", dark ? "#eef2ef" : "#121815"),
+    muted: cssVar("--muted", dark ? "#9aa7a0" : "#5b665f"),
+    brand: cssVar("--brand-ink", dark ? "#bff5cf" : "#1f6b3d"),
+  };
 
   // Frosted: the scene behind, blurred, then washed over. A browser that
   // cannot blur a canvas still gets the wash.
@@ -139,7 +156,7 @@ export async function caption(canvas, info) {
   let y = top + pad + (beside ? Math.max(0, (iconSize - wordsH) / 2) : 0);
   for (const r of rows) {
     ctx.font = `${r.size}px ${family}`;
-    ctx.fillStyle = r.color;
+    ctx.fillStyle = inks[r.ink];
     ctx.fillText(r.text, pad, y + r.size * 0.88);
     y += r.size * lead;
   }
@@ -158,15 +175,15 @@ export async function caption(canvas, info) {
       ctx.restore();
     }
     ctx.textAlign = "right";
-    ctx.font = `${Math.round(40 * u)}px ${family}`;
-    ctx.fillStyle = brand;
+    ctx.font = `${sizes.brand}px ${family}`;
+    ctx.fillStyle = inks.brand;
     ctx.fillText(BRAND, right, mid - Math.round(4 * u));
     ctx.font = `${sizes.detail}px ${family}`;
-    ctx.fillStyle = muted;
+    ctx.fillStyle = inks.muted;
     ctx.fillText(host, right, mid + sizes.detail * 1.1);
   } else {
     // Its own row: a small icon, then "uwuStack · the address".
-    const rowY = H - pad;
+    const rowY = plan.H - pad;
     const small = Math.round(sizes.detail * 1.3);
     let x = pad;
     if (icon) {
@@ -179,10 +196,10 @@ export async function caption(canvas, info) {
       x += small + Math.round(12 * u);
     }
     ctx.font = `${sizes.detail}px ${family}`;
-    ctx.fillStyle = brand;
+    ctx.fillStyle = inks.brand;
     ctx.fillText(BRAND, x, rowY);
     x += ctx.measureText(`${BRAND}  `).width;
-    ctx.fillStyle = muted;
+    ctx.fillStyle = inks.muted;
     ctx.fillText(`·  ${host}`, x, rowY);
   }
 }

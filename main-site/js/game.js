@@ -22,7 +22,7 @@ import { packRecord } from "./record.js";
 import { createScene } from "./scene.js";
 import { createPresenter } from "./view.js";
 import { createReplay } from "./replay.js";
-import { caption, save as saveShot } from "./shot.js";
+import { prepare as prepareShot, layout as shotLayout, caption, save as saveShot } from "./shot.js";
 import { orbit, setFree, initFreecam } from "./freecam.js";
 import * as audio from "./audio.js";
 import { api } from "./api.js";
@@ -558,8 +558,9 @@ async function shareReplay() {
 // picture without them. WebGL lets its drawing buffer go once a frame is on
 // screen, so frame() draws the picture, copies it at once, then draws the
 // frame as usual over it: only that last draw reaches the screen. The
-// picture is framed as if no panel were there, so on a narrow screen the
-// tower sits in its middle rather than above where the panel was.
+// picture holds everything the player could see, the screen less a panel
+// along the bottom, zoomed out just enough to clear the caption band
+// (js/scene.js), so nobody has to frame round the band.
 //
 // It is drawn at 4K, 3840 pixels along the longer side, whatever the
 // screen, in the graphics quality the player has picked, and js/shot.js
@@ -572,20 +573,25 @@ const SHOT_MAX_PIXELS = 3840 * 2160;
 const SHOT_MAX_PIXELS_PHONE = 6e6;
 let shotWanted = false;
 
-function takeShot() {
-  if (!scene || shotWanted) return;
-  shotWanted = true;
+async function takeShot() {
+  if (!scene || shotWanted || $("rpShot").disabled) return;
   $("rpShot").disabled = true;
+  // The band is laid out in the same frame as the draw, so its font and
+  // icon have to be in hand first.
+  await prepareShot();
+  shotWanted = true;
 }
 
 function captureShot(view) {
   shotWanted = false;
   const phone = matchMedia("(pointer: coarse)").matches;
-  const picture = scene.capture(view, { long: SHOT_LONG, maxPixels: phone ? SHOT_MAX_PIXELS_PHONE : SHOT_MAX_PIXELS });
   const info = shotInfo();
+  let plan = null;
+  const size = { long: SHOT_LONG, maxPixels: phone ? SHOT_MAX_PIXELS_PHONE : SHOT_MAX_PIXELS };
+  const picture = scene.capture(view, size, (w, h) => (plan = shotLayout(w, h, info)).bandH);
   (async () => {
     if (!picture) throw new Error("no picture");
-    await caption(picture, info);
+    caption(picture, plan);
     await saveShot(picture);
     toast(`Picture saved, ${picture.width} × ${picture.height}.`);
   })()
@@ -764,7 +770,7 @@ function frame(now) {
   const free = S.mode === "over" || S.mode === "shared";
   setFree(free);
   const look = { ...view, overview, cover: sheetCover(), clock, orbit: free ? orbit : null };
-  if (shotWanted && scene) captureShot({ ...look, dt: 0, shot: true });
+  if (shotWanted && scene) captureShot({ ...look, dt: 0 });
   scene?.draw({ ...look, dt });
   requestAnimationFrame(frame);
 }

@@ -1227,8 +1227,11 @@ export function createScene(canvas, { quality = "high" } = {}) {
   //   dt         real seconds since the last frame
   //   clock      real seconds, for the waves and the clouds
   //   orbit      the replay's free camera, js/freecam.js, or null
-  //   shot       true for a saved picture: framed as if no panel covered
-  //              the screen, centred and pulled back no further than that
+  //   shot       a saved picture, { band }: the share of its height along
+  //              the bottom that a caption covers. It shows all of what
+  //              the player could see, the screen less any panel along
+  //              the bottom, zoomed out just enough to fit above the band,
+  //              with more of the scene round it
   function draw(view) {
     resize();
     const { t, seedNum, layers, count, overview = 0, cover = 0, dt = 0.016, clock = 0 } = view;
@@ -1341,8 +1344,6 @@ export function createScene(canvas, { quality = "high" } = {}) {
     orb.lift += (want.lift - orb.lift) * glide;
 
     const dist = cam.dist * orb.zoom;
-    // A picture has no panel over it: undo the pull back a panel asks for.
-    const away = view.shot ? dist / (1 + overview * (1 / (1 - cam.cover) - 1)) : dist;
     const screen = 2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * dist;
     // Lifted no further than from the island to just over the top. The
     // clamped lift goes back into the orbit, so dragging back from past an
@@ -1362,9 +1363,20 @@ export function createScene(canvas, { quality = "high" } = {}) {
     // the height, so the whole tower in view sits in the middle too.
     const along = top > 0 ? THREE.MathUtils.clamp(ty / top, 0, 1) : 0;
     const target = new THREE.Vector3(cam.x * along, ty, cam.z * along);
-    camera.position.copy(target).addScaledVector(look3, away);
+    camera.position.copy(target).addScaledVector(look3, dist);
     camera.lookAt(target);
-    if (cam.cover > 0.002 && !view.shot) camera.setViewOffset(width, height, 0, (height * cam.cover) / 2, width, height);
+    const covered = cam.cover > 0.002 ? cam.cover : 0;
+    if (view.shot) {
+      // On screen the picture sits a panel's half height down the view, so
+      // the part no panel covers is the middle (1 - cover) of the view's
+      // height, all of its width. The picture fits that above its band,
+      // centred there, and zooms out (draws a bigger view) only if it has
+      // to; whatever is round it is simply more of the scene.
+      const band = Math.min(0.5, view.shot.band ?? 0);
+      const tall = height * Math.max(1, (1 - covered) / (1 - band));
+      const wide = (tall * width) / height;
+      camera.setViewOffset(width, height, (width - wide) / 2, height / 2 - ((1 - band) * tall) / 2, wide, tall);
+    } else if (covered) camera.setViewOffset(width, height, 0, (height * covered) / 2, width, height);
     else camera.clearViewOffset();
 
     scene.fog.near = dist * 2.5;
@@ -1437,7 +1449,9 @@ export function createScene(canvas, { quality = "high" } = {}) {
   //   long       pixels wanted along the picture's longer side
   //   maxPixels  no more pixels than this in all, to spare GPU memory
   // Returns the 2D canvas, or null if the picture could not be drawn.
-  function capture(view, { long, maxPixels }) {
+  //   band(w, h) the height in pixels of the caption along the bottom of a
+  //              w x h picture, which the scene is framed above
+  function capture(view, { long, maxPixels }, band = () => 0) {
     resize();
     const gl = renderer.getContext();
     const viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
@@ -1455,7 +1469,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     );
     try {
       renderer.setPixelRatio(ratio);
-      draw(view);
+      draw({ ...view, shot: { band: band(canvas.width, canvas.height) / canvas.height } });
       const copy = document.createElement("canvas");
       copy.width = canvas.width;
       copy.height = canvas.height;

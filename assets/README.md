@@ -98,7 +98,7 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 | `GodRays` | A URP renderer feature (render graph): light shafts fanning out round the tower from the sun's glint, as `js/post.js` |
 | `TowerCamera` | The follow camera, overview and free-camera offsets |
 | `GameAudio` | Every sound at the game's levels and pitches, and the water loop dulling with distance |
-| `TowerScreenshot` | The camera button's picture, as `js/game.js` and `js/shot.js`: the camera drawn again at 4K (3840 along the longer side, held to 4K UHD's pixel count, 6 MP on a phone, never below the screen) with no UI layer, the caption band drawn over its bottom, and the PNG saved: the Downloads folder on Windows (wherever it was moved), macOS and Linux (XDG's), a browser download in WebGL, the app's own `Screenshots` folder on Android and iOS |
+| `TowerScreenshot` | The camera button's picture, as `js/game.js` and `js/shot.js`: the camera drawn again at 4K (3840 along the longer side, held to 4K UHD's pixel count, 6 MP on a phone, never below the screen) with no UI layer, framed so all of what the player sees fits above the caption band (the view keeps its top edge and widens down and to the sides), the band drawn over its bottom, and the PNG saved: the Downloads folder on Windows (wherever it was moved), macOS and Linux (XDG's), a browser download in WebGL, the app's own `Screenshots` folder on Android and iOS |
 | `ShotCaption` | What the band says and where each piece goes, in plain C#: the name or the score large, the result, the seed and the day played as "3 Nov 2026", uwuStack and the address in the corner, or on its own row when the picture is too narrow |
 
 `Rules`, `Fall` and the splash hash were checked against the JavaScript on

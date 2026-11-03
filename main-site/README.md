@@ -118,9 +118,10 @@ canvas, so none of the panels, score cards or buttons over it. It is drawn
 again off screen at 4K, 3840 pixels along the longer side (3840 x 2160 on
 a 16:9 screen), in the graphics quality picked in Settings, held to 4K
 UHD's pixel count in all and to about 6 megapixels on a phone to spare GPU
-memory. It is framed as if no panel were there, so on a narrow screen the
-tower is in the middle of the picture rather than above where the panel
-sat. A frosted band along the bottom, in the game's font and the theme's
+memory. It holds everything the player could see (the screen, less the
+panel along the bottom of a narrow screen), zoomed out just enough that
+all of it fits above the caption band, with a little more of the scene
+round it, so nothing has to be framed round the band. A frosted band along the bottom, in the game's font and the theme's
 colours (`shot.js`), names the player if they have a name, then the final
 score, height, mode, perfects and best run (and autoplay, if it played),
 the seed and the day it was played ("3 Nov 2026"), with uwuStack and the

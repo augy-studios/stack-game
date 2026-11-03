@@ -99,6 +99,21 @@ namespace UwuStack
             return new[] { new[] { named ? info.Name.Trim() : points }, result.ToArray(), detail.ToArray() };
         }
 
+        // The picture's view, from the screen's: t and r are the screen's
+        // half height and half width at the near plane, band the share of
+        // the picture's height the caption covers. The screen's whole view
+        // fills the picture above the band, its top edge where it was; the
+        // picture, the same shape as the screen, sees further down and a
+        // little further to each side.
+        public static void Frustum(float t, float r, float band, out float left, out float right, out float bottom, out float top)
+        {
+            float grow = 1 / (1 - Math.Min(0.5f, Math.Max(0, band)));
+            top = t;
+            bottom = t - 2 * t * grow;
+            left = -r * grow;
+            right = r * grow;
+        }
+
         static int R(float v) => (int)Math.Round(v, MidpointRounding.AwayFromZero);
 
         // A size at which the parts fit in room: the size asked for, or
