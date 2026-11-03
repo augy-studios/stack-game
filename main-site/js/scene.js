@@ -1324,6 +1324,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     const top = (count - 1) * LAYER * S;
     const weather = view.weather;
     const wantWet = weather?.rain ? (weather.storm ? 1 : 0.6) : 0;
+    const fresh = !wetReady;
     wet = wetReady ? wet + (wantWet - wet) * (1 - Math.exp(-dt * 0.7)) : wantWet;
     if (Math.abs(wet - wantWet) < 0.001) wet = wantWet;
     wetReady = true;
@@ -1517,6 +1518,8 @@ export function createScene(canvas, { quality = "high" } = {}) {
       top,
       colour: look.horizon,
       dark: look.dark,
+      wind: weather?.wind ?? null,
+      dt: fresh ? 0 : dt,
       strike,
       flash,
       pixel: (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * shown) / canvas.height,

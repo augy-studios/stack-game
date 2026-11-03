@@ -8,6 +8,9 @@
 // Ordinary rain has no lightning, only a distant roll of thunder now and
 // then.
 //
+// Now and then in any rain a light gust of wind blows for a few seconds and
+// slants it. The wind makes no sound.
+//
 // Times are game milliseconds, like everything else in a game.
 
 import { mix } from "./seed.js";
@@ -83,4 +86,36 @@ export function strikeAt(weather, seedNum, t) {
     if (e && t >= e.at && t < e.at + FLASH_MS) return { ...e, age: t - e.at };
   }
   return null;
+}
+
+// Gusts: at most one a slot, in that share of slots, lasting GUST_MS and up
+// to GUST_SPREAD more, easing up and dying away.
+const GUST_SLOT = 18000;
+const GUST_ODDS = 60;
+const GUST_MS = 4000;
+const GUST_SPREAD = 4000;
+const GUST_SALT = 0x77696e64;
+
+// The gust blowing at t: { strength, angle }, strength 0 when still, up to
+// 1, angle in radians round from x towards z.
+export function windAt(weather, seedNum, t) {
+  if (!weather?.rain || t < 0) return { strength: 0, angle: 0 };
+  // Across the camera's usual view, so the slant shows: towards the left
+  // of the screen or the right, as the game's seed has it, give or take a
+  // little for each gust.
+  const base = mix(seedNum, GUST_SALT) % 2 ? 2.356 : -0.785;
+  const k = Math.floor(t / GUST_SLOT);
+  for (const j of [k, k - 1]) {
+    if (j < 0) continue;
+    const h = mix(mix(seedNum, GUST_SALT + 1), j);
+    if (h % 100 >= GUST_ODDS) continue;
+    const length = GUST_MS + (mix(h, 1) % GUST_SPREAD);
+    const at = j * GUST_SLOT + 2000 + (mix(h, 2) % (GUST_SLOT - 4000));
+    const u = (t - at) / length;
+    if (u < 0 || u > 1) continue;
+    const strength = (0.55 + (mix(h, 3) % 450) / 1000) * Math.sin(Math.PI * u) ** 2;
+    const angle = base + ((mix(h, 4) % 1001) / 1000 - 0.5) * 0.7;
+    return { strength, angle };
+  }
+  return { strength: 0, angle: base };
 }

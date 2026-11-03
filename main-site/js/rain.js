@@ -11,6 +11,8 @@
 // a function of the clock in the vertex shaders, so thousands cost almost
 // nothing. The drops fill a box round where the camera looks, wrapping
 // round its edges in the world, so they hold still as the camera moves.
+// Low quality draws the drops but not their splashes. Now and then a
+// gust of wind slants them, easing in and dying away.
 //
 // Lightning the way 3D games draw it: a jagged bolt made by halving its
 // line again and again and pushing each middle sideways, less each time,
@@ -361,7 +363,7 @@ export function createRain(scene, { waves, island }) {
     uCentre: { value: new THREE.Vector3() },
     uRange: { value: RANGE },
     uSpeed: { value: SPEED },
-    uWind: { value: new THREE.Vector2(0.38, 0.14) },
+    uWind: { value: CALM.clone() },
     uLevel: { value: 0 },
     uTower: { value: new THREE.Vector4() },
     uTowerTop: { value: 0 },
@@ -463,9 +465,21 @@ export function createRain(scene, { waves, island }) {
   //   strike    the lightning strike, or null; flash, how bright it is
   //   pixel     how wide one pixel is at a unit's distance
   //   dark      the theme is dark
-  function update({ wet, clock, camera, target, level, footprint, top, colour, strike, flash, pixel, dark = false }) {
+  //   wind      the gust blowing, { strength, angle }, or null
+  //   dt        real seconds since the last frame, 0 to snap
+  const windNow = CALM.clone();
+  const windWant = new THREE.Vector2();
+  function update({ wet, clock, camera, target, level, footprint, top, colour, strike, flash, pixel, dark = false, wind = null, dt = 0.016 }) {
     const raining = wet > 0.005;
-    streaks.visible = splashes.visible = raining;
+    streaks.visible = raining;
+    // Low quality has the rain but not the splashes.
+    splashes.visible = raining && quality === "high";
+    // A gust, eased into and out of, so a jump in the replay does not
+    // swing every drop at once.
+    windWant.copy(CALM);
+    if (wind?.strength) windWant.add(new THREE.Vector2(Math.cos(wind.angle), Math.sin(wind.angle)).multiplyScalar(GUST * wind.strength));
+    windNow.lerp(windWant, dt > 0 ? 1 - Math.exp(-dt * 2.5) : 1);
+    uniforms.uWind.value.copy(windNow);
     if (raining) {
       const n = DROPS[quality];
       streakGeo.instanceCount = splashGeo.instanceCount = n;
@@ -482,9 +496,12 @@ export function createRain(scene, { waves, island }) {
       // A cool grey a shade off the sky's: against a pale sky and sea a
       // drop shows darker, as rain does against a bright sky, and against
       // the tower lighter.
-      uniforms.uColour.value.copy(colour).lerp(RAIN_GREY, 0.5).multiplyScalar(dark ? 1.25 : 0.88);
+      uniforms.uColour.value.copy(colour).lerp(RAIN_GREY, 0.5).multiplyScalar(dark ? 1.25 : 0.8);
       splashUniforms.uColour.value.copy(colour).lerp(WHITE, 0.75);
       uniforms.uFlash.value = flash;
+      // Low quality's drops are a pixel wide on a screen with no
+      // post-processing, so they need more to show.
+      uniforms.uOpacity.value = quality === "low" ? 1 : 0.75;
     }
 
     bolt.visible = Boolean(strike) && flash > 0.001;
@@ -514,4 +531,9 @@ export function createRain(scene, { waves, island }) {
 }
 
 const WHITE = new THREE.Color(1, 1, 1);
+// The wind the rain falls in when no gust blows, and how fast a full gust
+// pushes it across, in world units a second: about a fifth of the speed it
+// falls, so the drops slant by up to about a quarter turn of a right angle.
+const CALM = new THREE.Vector2(0.38, 0.14);
+const GUST = 2.3;
 const RAIN_GREY = new THREE.Color(0.62, 0.68, 0.76);

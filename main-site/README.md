@@ -71,7 +71,10 @@ is always dry. Rain brings dark clouds over a grey sky, a dimmer sun and
 less glint on the water. Every drop is a faint streak, and every one that
 lands has its own tiny splash: a few droplets thrown up and a ring
 spreading on the water, riding the waves, or just the droplets where it
-lands on the island or the top of the tower. The rain's recording
+lands on the island or the top of the tower (low quality has the rain
+but not the splashes). Now and then, about every forty seconds, a light
+gust of wind slants the rain for a few seconds and dies away; it makes no
+sound. The rain's recording
 (`sounds/Rain.mp3`) loops quietly under everything, well below the
 waves, and thunder rolls in from far off now and then, about once a
 minute, low and dull. On Hard the rain is a storm: heavier, darker, and

@@ -7,7 +7,7 @@ import { LAYER, speedFor, swingAt, waterAt } from "./rules.js";
 import { axisOf, difficultyOfGame } from "./sim.js";
 import { simulateFall } from "./fall.js";
 import * as audio from "./audio.js";
-import { weatherOf, thunderBetween, strikeAt } from "./weather.js";
+import { weatherOf, thunderBetween, strikeAt, windAt } from "./weather.js";
 
 const PIECE_WINDOW_MS = 10000;
 const RING_MS = 650;
@@ -144,7 +144,7 @@ export function createPresenter() {
       rings,
       growing,
       top: (count - 1) * LAYER,
-      weather: { ...weather, strike: strikeAt(weather, game.seedNum, t) },
+      weather: { ...weather, strike: strikeAt(weather, game.seedNum, t), wind: windAt(weather, game.seedNum, t) },
     };
   }
 
