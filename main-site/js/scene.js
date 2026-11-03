@@ -14,6 +14,7 @@ import { LAYER, ISLAND_TOP, MAX_START } from "./rules.js";
 import { fallAt } from "./fall.js";
 import { drawCloud, CLOUD_VARIANTS } from "./clouds.js";
 import { createPost } from "./post.js";
+import { createRain, flashOf } from "./rain.js";
 
 const S = 1 / 1000;
 const FOV = 40;
@@ -233,6 +234,9 @@ const SKY_FRAGMENT = `
   uniform vec3 uCloudShade;
   uniform float uCumulus;
   uniform float uCirrus;
+  uniform float uOvercast;
+  uniform float uFlash;
+  uniform float uFlashX;
   varying vec2 vUv;
 
   float hash(vec2 p) {
@@ -327,6 +331,7 @@ const SKY_FRAGMENT = `
     }
 
     float h = y - 0.4;
+    float cloudy = 0.0;
     if (h > 0.0) {
       // Cirrus, on a high plane: streaks drawn out along the wind, combed
       // by a slower noise, in patches that come and go.
@@ -345,8 +350,10 @@ const SKY_FRAGMENT = `
       float near = 1.0 / (h + 0.08);
       vec2 p = vec2((vUv.x - 0.5 + uPan) * uAspect * near * 0.9, near * 1.4);
       p += vec2(uTime * 0.03, uTime * 0.05);
-      float dens = cumulus(p);
+      // Rain thickens the cloud.
+      float dens = cumulus(p) + uOvercast * 0.24;
       float body = smoothstep(0.5, 0.6, dens);
+      cloudy = body * smoothstep(0.0, 0.18, h);
       if (body > 0.0) {
         float upper = cumulus(p + vec2(0.0, 0.35));
         float under = smoothstep(-0.02, 0.12, upper - dens) * smoothstep(0.03, 0.3, h);
@@ -356,6 +363,15 @@ const SKY_FRAGMENT = `
         float haze = smoothstep(0.0, 0.18, h);
         c = mix(c, cloud, body * haze * uCumulus);
       }
+    }
+
+    // Lightning: the whole sky lit for an instant, most round the bolt,
+    // the clouds from inside, brighter than white so it blooms.
+    if (uFlash > 0.0) {
+      float x = (vUv.x - uFlashX) * uAspect;
+      float near = exp(-x * x * 3.0);
+      float lit = uFlash * (0.25 + 0.75 * near) * (0.35 + 0.65 * smoothstep(0.3, 0.8, y)) * (0.6 + 0.9 * cloudy);
+      c += vec3(0.82, 0.86, 1.0) * lit;
     }
 
     gl_FragColor = vec4(c, 1.0);
@@ -398,6 +414,27 @@ const WAVES = `
     float calm = mix(0.35, 1.0, smoothstep(0.8, 3.0, length(p)));
     nrm = vec3(nrm.x * calm, 1.0 - (1.0 - nrm.y) * calm, nrm.z * calm);
     return disp * calm;
+  }
+`;
+
+// The island's shape, for the water's depth and for where rain lands.
+const ISLAND = `
+  const float SAND_TOP_R = ${num(SAND_TOP_R)};
+
+  // How far out p is on the island's ten-sided outline: its distance to
+  // the side facing it, scaled to the corners' radius.
+  float islandRadius(vec2 p) {
+    float a = mod(atan(p.x, p.y), 0.6283185) - 0.3141593;
+    return length(p) * cos(a) / 0.9510565;
+  }
+
+  // The bottom under the water at that radius: grass, the sand's top, its
+  // slope, then a drop away into deep water.
+  float ground(float r) {
+    if (r < ${num(GRASS_R)}) return ${num(GRASS_TOP_Y)};
+    if (r < ${num(SAND_TOP_R)}) return ${num(SAND_TOP_Y)};
+    if (r < ${num(SAND_BOTTOM_R)}) return ${num(SAND_TOP_Y)} - (r - ${num(SAND_TOP_R)}) * ${num(SAND_HEIGHT / (SAND_BOTTOM_R - SAND_TOP_R))};
+    return ${num(SAND_TOP_Y - SAND_HEIGHT)} - (r - ${num(SAND_BOTTOM_R)}) * 2.0;
   }
 `;
 
@@ -462,21 +499,7 @@ const WATER_FRAGMENT = `
     return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
   }
 
-  // How far out p is on the island's ten-sided outline: its distance to
-  // the side facing it, scaled to the corners' radius.
-  float islandRadius(vec2 p) {
-    float a = mod(atan(p.x, p.y), 0.6283185) - 0.3141593;
-    return length(p) * cos(a) / 0.9510565;
-  }
-
-  // The bottom under the water at that radius: grass, the sand's top, its
-  // slope, then a drop away into deep water.
-  float ground(float r) {
-    if (r < ${num(GRASS_R)}) return ${num(GRASS_TOP_Y)};
-    if (r < ${num(SAND_TOP_R)}) return ${num(SAND_TOP_Y)};
-    if (r < ${num(SAND_BOTTOM_R)}) return ${num(SAND_TOP_Y)} - (r - ${num(SAND_TOP_R)}) * ${num(SAND_HEIGHT / (SAND_BOTTOM_R - SAND_TOP_R))};
-    return ${num(SAND_TOP_Y - SAND_HEIGHT)} - (r - ${num(SAND_BOTTOM_R)}) * 2.0;
-  }
+  ${ISLAND}
 
   // Ripples riding on the swell, too fine for the mesh, so only in the
   // shading. Each fades out before it is too small on screen to draw
@@ -632,6 +655,9 @@ export function createScene(canvas, { quality = "high" } = {}) {
     uCloudShade: { value: new THREE.Color(0.8, 0.84, 0.92) },
     uCumulus: { value: 0.8 },
     uCirrus: { value: 0.5 },
+    uOvercast: { value: 0 },
+    uFlash: { value: 0 },
+    uFlashX: { value: 0.5 },
   };
   const skyMat = new THREE.ShaderMaterial({
     uniforms: skyUniforms,
@@ -950,6 +976,30 @@ export function createScene(canvas, { quality = "high" } = {}) {
     return ringPool[i];
   }
 
+  /* ---- the weather ---- */
+  const rain = createRain(scene, { waves: WAVES, island: ISLAND });
+  // How wet it is as drawn, easing towards the weather's: 0 dry, up to 1
+  // for a storm. The sky greys and the light dims with it.
+  let wet = 0;
+  let wetReady = false;
+  const FLASH = new THREE.Color(0.85, 0.88, 1.0);
+  const GREY = new THREE.Color();
+  const footprint = new THREE.Vector4();
+  const flashPoint = new THREE.Vector3();
+  // How far into its rain the scene is: light rain is wet 0.6 and a
+  // storm 1, and the rain clouds come in full by light rain's.
+  const rainy = () => Math.min(1, wet / 0.6);
+  const stormy = () => THREE.MathUtils.clamp((wet - 0.6) / 0.4, 0, 1);
+  // Rain clouds' lit tops and dark undersides, slate grey.
+  const RAIN_LIT = new THREE.Color(0.56, 0.58, 0.63);
+  const RAIN_SHADE = new THREE.Color(0.3, 0.32, 0.37);
+  const TMP_A = new THREE.Color();
+  // Towards its own grey by k, and darker by dim.
+  const overcast = (c, k, dim) => {
+    const l = c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
+    return c.lerp(GREY.setRGB(l, l, l), k).multiplyScalar(1 - dim);
+  };
+
   /* ---- colours from the theme ---- */
   const look = {
     dark: false,
@@ -990,6 +1040,13 @@ export function createScene(canvas, { quality = "high" } = {}) {
       targetTop.setHSL(hh(55), 0.55, 0.72);
       targetHorizon.setHSL(hh(20), 0.7, 0.86).lerp(look.brand, 0.2);
       targetBottom.setHSL(hh(0), 0.55, 0.8);
+    }
+    if (wet > 0) {
+      const r = rainy();
+      const storm = stormy();
+      overcast(targetTop, 0.7 * r, 0.3 * r + 0.15 * storm);
+      overcast(targetHorizon, 0.65 * r, 0.32 * r + 0.12 * storm);
+      overcast(targetBottom, 0.55 * r, 0.22 * r + 0.12 * storm);
     }
   }
 
@@ -1047,6 +1104,30 @@ export function createScene(canvas, { quality = "high" } = {}) {
       raysLevel = 1;
     }
     hemi.color.copy(look.top).lerp(WHITE, 0.6);
+
+    // Rain: an overcast sky, thicker greyer cloud, no stars, a dimmer sun
+    // with softer shadows, less glint and no god rays.
+    const dry = 1 - wet;
+    const r = rainy();
+    const storm = stormy();
+    skyUniforms.uOvercast.value = Math.max(wet, 0.8 * r);
+    skyUniforms.uGlow.value *= 1 - 0.85 * r;
+    skyUniforms.uStars.value *= dry;
+    skyUniforms.uMeteors.value *= dry;
+    skyUniforms.uCumulus.value = Math.min(1, skyUniforms.uCumulus.value + 0.15 * r);
+    // Any rain brings dark rain clouds, a storm's darker still.
+    const deep = (look.dark ? 0.45 : 1) * (1 - 0.3 * storm);
+    skyUniforms.uCloudLit.value.lerp(TMP_A.copy(RAIN_LIT).multiplyScalar(deep), r);
+    skyUniforms.uCloudShade.value.lerp(TMP_A.copy(RAIN_SHADE).multiplyScalar(deep), r);
+    cloudTint.lerp(TMP_A.copy(RAIN_LIT).multiplyScalar(deep * 0.95), r);
+    cloudOpacity = Math.min(0.95, cloudOpacity + 0.12 * r);
+    waterUniforms.uGlint.value *= 1 - 0.8 * r - 0.1 * storm;
+    overcast(waterUniforms.uDeep.value, 0.3 * wet, 0.08 * wet);
+    overcast(waterUniforms.uShallow.value, 0.3 * wet, 0.08 * wet);
+    sun.intensity *= 1 - 0.4 * r - 0.15 * storm;
+    sun.shadow.intensity = 0.9 * (1 - 0.45 * wet);
+    hemi.intensity *= 1 - 0.1 * wet;
+    raysLevel *= 1 - 0.85 * wet;
   }
 
   /* ---- quality ---- */
@@ -1057,6 +1138,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     const low = value === "low";
     if (drawnAs === (low ? "low" : "high")) return;
     drawnAs = low ? "low" : "high";
+    rain.setQuality(drawnAs);
     renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     water.geometry.dispose();
     water.geometry = new THREE.PlaneGeometry(260, 260, low ? 96 : 256, low ? 96 : 256);
@@ -1240,6 +1322,13 @@ export function createScene(canvas, { quality = "high" } = {}) {
     growLayers(view.growing ?? [], layers, count, seedNum, t);
 
     const top = (count - 1) * LAYER * S;
+    const weather = view.weather;
+    const wantWet = weather?.rain ? (weather.storm ? 1 : 0.6) : 0;
+    wet = wetReady ? wet + (wantWet - wet) * (1 - Math.exp(-dt * 0.7)) : wantWet;
+    if (Math.abs(wet - wantWet) < 0.001) wet = wantWet;
+    wetReady = true;
+    const strike = weather?.strike ?? null;
+    const flash = flashOf(strike);
     const h = hueOf(seedNum, count - 1);
     if (look.hue < 0) {
       skyTargets(h);
@@ -1249,6 +1338,15 @@ export function createScene(canvas, { quality = "high" } = {}) {
     }
     look.hue = h;
     applyLook(h, Math.min(1, dt * 1.5));
+
+    // A strike lights the scene and the sky it mirrors.
+    if (flash > 0) {
+      const lit = flash * (0.5 + 0.5 * strike.near);
+      hemi.intensity += 0.8 * lit;
+      hemi.color.lerp(FLASH, Math.min(1, 0.6 * lit));
+      waterUniforms.uHorizon.value.lerp(FLASH, Math.min(1, 0.25 * lit));
+      waterUniforms.uTop.value.lerp(FLASH, Math.min(1, 0.25 * lit));
+    }
 
     // The slab.
     if (view.slab) {
@@ -1402,6 +1500,33 @@ export function createScene(canvas, { quality = "high" } = {}) {
     sun.position.copy(shadowAt).addScaledVector(SUN_FROM, 40);
     sun.target.position.copy(shadowAt);
 
+    // Rain round where the camera looks, landing on the water, the island
+    // and the top of the tower; the bolt out past the tower.
+    const fp = topLayer ?? layers[0];
+    footprint.set(fp.x * S, fp.z * S, (fp.sx * S) / 2, (fp.sz * S) / 2);
+    // How much of the full view the picture shows, for a picture bigger
+    // than the screen.
+    const shown = camera.view?.enabled ? camera.view.height / camera.view.fullHeight : 1;
+    rain.update({
+      wet,
+      clock,
+      camera,
+      target,
+      level,
+      footprint,
+      top,
+      colour: look.horizon,
+      dark: look.dark,
+      strike,
+      flash,
+      pixel: (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * shown) / canvas.height,
+    });
+    skyUniforms.uFlash.value = flash * (0.5 + 0.5 * (strike?.near ?? 0)) * 0.7;
+    if (flash > 0) {
+      flashPoint.copy(rain.bolt.position).project(camera);
+      skyUniforms.uFlashX.value = flashPoint.x * 0.5 + 0.5;
+    }
+
     const fx = cam.x;
     const fz = cam.z;
     for (const c of clouds) {
@@ -1437,7 +1562,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
       renderer.render(back, backCamera);
       renderer.render(scene, camera);
     };
-    if (post) post.render(paint, { camera, sun: GLINT, rays: raysLevel, time: clock });
+    if (post) post.render(paint, { camera, sun: GLINT, rays: raysLevel, time: clock, flash });
     else paint();
   }
 
@@ -1487,6 +1612,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
   // in the replay or a new game.
   function snapCamera() {
     cam.ready = false;
+    wetReady = false;
   }
 
   readTheme();

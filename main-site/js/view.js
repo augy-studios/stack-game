@@ -7,6 +7,7 @@ import { LAYER, speedFor, swingAt, waterAt } from "./rules.js";
 import { axisOf, difficultyOfGame } from "./sim.js";
 import { simulateFall } from "./fall.js";
 import * as audio from "./audio.js";
+import { weatherOf, thunderBetween, strikeAt } from "./weather.js";
 
 const PIECE_WINDOW_MS = 10000;
 const RING_MS = 650;
@@ -19,11 +20,13 @@ const AFTER_MS = 2500;
 
 export function createPresenter() {
   let game = null;
+  let weather = null;
   const falls = new Map();
 
   function bind(state) {
     if (state !== game) {
       game = state;
+      weather = weatherOf(game.seedNum, game.settings.difficulty);
       falls.clear();
     }
   }
@@ -141,13 +144,16 @@ export function createPresenter() {
       rings,
       growing,
       top: (count - 1) * LAYER,
+      weather: { ...weather, strike: strikeAt(weather, game.seedNum, t) },
     };
   }
 
   // Plays what happened in (from, to]. Skipped for a jump, so seeking the
   // replay does not play every sound at once. buzz, when given, is called
   // for a piece knocking against the tower or going into the water.
-  function sounds(state, from, to, { jump = false, slosh = true, buzz = null } = {}) {
+  // thunder: false leaves the weather's thunder out, for a call that only
+  // plays a tap's own sounds.
+  function sounds(state, from, to, { jump = false, slosh = true, thunder = true, buzz = null } = {}) {
     bind(state);
     if (!(to > from)) return;
     const count = countAt(to);
@@ -172,6 +178,7 @@ export function createPresenter() {
         }
       });
       if (game.over && game.over.at > from && game.over.at <= to) audio.playGameOver();
+      if (thunder) thunderBetween(weather, game.seedNum, from, to, (e) => audio.playThunder(e.near, e.side));
     }
     if (slosh) {
       const ended = game.over && to >= game.over.at;

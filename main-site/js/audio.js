@@ -1,7 +1,7 @@
 // Every sound in the game, made with the Web Audio API as it plays, but
-// four: a piece knocking as it falls, a grown layer's slide, the splash
-// and the water's loop are recordings, sounds/*.wav, precached by sw.js so they play offline
-// too. Until one has loaded, or if it cannot, a synthesised stand-in plays
+// these: a piece knocking as it falls, a grown layer's slide, the splash,
+// the water's loop, the rain's loop and the thunder are recordings,
+// sounds/*, precached by sw.js so they play offline too. Until one has loaded, or if it cannot, a synthesised stand-in plays
 // in its place.
 //
 //   drop      a slab landing with a cut: a wooden knock with the thud of
@@ -18,6 +18,11 @@
 //   land      a piece landing on the island: dull, the sand takes the ring
 //   splash    a piece, or a missed slab, going into the water
 //   slosh     the water itself, waves lapping on a loop
+//   rain      a game played in the rain: sounds/Rain.mp3 on a seamless
+//             loop, softened and kept well under the waves
+//   thunder   a long, soft roll: sounds/Thunder.mp3, or one of the two
+//             rolls in sounds/RainAndThunder.mp3, the further off the
+//             quieter and duller
 //
 // The water's sounds come from as far below the layer being built as the
 // water is, so they are quieter and duller the further down it is, as
@@ -44,6 +49,8 @@ let slosh = null;
 let on = true;
 let sloshGap = Infinity;
 let sloshHeld = false;
+let rain = null;
+let rainLevel = 0;
 
 // The recordings, and where in each the sound starts, so it lands on the
 // moment it belongs to rather than after the file's lead-in.
@@ -57,6 +64,18 @@ const RECORDINGS = {
   grow: { url: "/sounds/PlateSliding.wav", from: 0.08, gain: 0.24 },
 };
 const recorded = {};
+
+// The weather's recordings. Thunder comes in three takes: the clap in
+// Thunder.mp3, and the two rolls in RainAndThunder.mp3, cut out of the
+// rain round them, each as [file, from, to] in seconds.
+const RAIN_URL = "/sounds/Rain.mp3";
+const THUNDER_TAKES = [
+  ["/sounds/Thunder.mp3", 0.45, 7.1],
+  ["/sounds/RainAndThunder.mp3", 2.2, 7.4],
+  ["/sounds/RainAndThunder.mp3", 10.3, 15.2],
+];
+const thunderTakes = [];
+let thunderTake = 0;
 
 // The perfect's scale: C major, as semitones above C, from C3 up OCTAVES
 // octaves to C6. Loudness is set against middle C.
@@ -90,9 +109,15 @@ export function unlock() {
     master.connect(limiter).connect(ctx.destination);
     noise = makeNoise();
     startSlosh();
+    if (rainLevel > 0) startRain();
     for (const [name, { url }] of Object.entries(RECORDINGS)) {
       loadSound(url).then((buffer) => (recorded[name] = buffer), () => {});
     }
+    const files = {};
+    THUNDER_TAKES.forEach(([url, from, to], i) => {
+      files[url] ??= loadSound(url);
+      files[url].then((buffer) => (thunderTakes[i] = { buffer, from, to }), () => {});
+    });
   }
   if (ctx.state === "suspended") ctx.resume().catch(() => {});
 }
@@ -448,11 +473,11 @@ function startSlosh() {
     .catch(() => synthSlosh(dull));
 }
 
-function seamless(buffer) {
+function seamless(buffer, trim = SLOSH_TRIM, fadeSeconds = SLOSH_FADE) {
   const rate = buffer.sampleRate;
-  const from = Math.round(SLOSH_TRIM[0] * rate);
-  const to = Math.min(buffer.length, Math.round(SLOSH_TRIM[1] * rate));
-  const fade = Math.round(SLOSH_FADE * rate);
+  const from = Math.round(trim[0] * rate);
+  const to = Math.min(buffer.length, Math.round(trim[1] * rate));
+  const fade = Math.round(fadeSeconds * rate);
   const length = to - from - fade;
   const out = ctx.createBuffer(buffer.numberOfChannels, length, rate);
   for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
@@ -505,6 +530,236 @@ export function setSlosh(gap, held = false) {
   const at = ctx.currentTime;
   slosh.level.gain.setTargetAtTime(held ? 0 : SLOSH_LOUD * gain, at, 0.25);
   slosh.dull.frequency.setTargetAtTime(cutoff, at, 0.25);
+}
+
+/* ---- the weather ---- */
+
+// The rain: sounds/Rain.mp3, its ends crossfaded so it loops without a
+// seam, softened a touch at the top so it never hisses, and kept well
+// under the waves. Light rain, not a downpour.
+const RAIN_TRIM = [0.1, 15.8];
+const RAIN_LOOP_FADE = 2;
+// Rain.mp3 is about 4 dB louder than the waves' recording; this puts it
+// about 8 dB under them.
+const RAIN_GAIN = 0.26;
+
+// Until it loads, or if it cannot, a stand-in made once: eight seconds
+// that loop without a seam, of
+//   a bed of pink noise, the many drops too far off to hear one by one
+//   ticks, the nearer drops striking, each a burst a few milliseconds long
+//   plinks, drops going into the water, each a tiny bubble ringing up in
+//     pitch (Minnaert), quiet and sparse
+// Each side gets its own, so it is all round the player.
+const SYNTH_RAIN_GAIN = 0.12;
+const RAIN_SECONDS = 8;
+const RAIN_FADE = 0.5;
+
+function rainBuffer() {
+  const rate = ctx.sampleRate;
+  const fade = Math.round(RAIN_FADE * rate);
+  const length = Math.round(RAIN_SECONDS * rate);
+  const total = length + fade;
+  const out = ctx.createBuffer(2, length, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = new Float32Array(total);
+    // Pink noise, Paul Kellet's economy filter.
+    let b0 = 0, b1 = 0, b2 = 0;
+    for (let i = 0; i < total; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.99765 * b0 + w * 0.099046;
+      b1 = 0.963 * b1 + w * 0.2965164;
+      b2 = 0.57 * b2 + w * 1.0526913;
+      d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.05;
+    }
+    // Ticks: a hundred and forty a second, most of them faint.
+    const ticks = Math.round(140 * (total / rate));
+    for (let n = 0; n < ticks; n++) {
+      const at = Math.floor(Math.random() * total);
+      const level = 0.02 + 0.12 * Math.random() ** 3;
+      const tau = rate * (0.0006 + 0.0016 * Math.random());
+      const span = Math.min(total - at, Math.round(tau * 6));
+      let lp = 0;
+      for (let i = 0; i < span; i++) {
+        lp += ((Math.random() * 2 - 1) - lp) * 0.5;
+        d[at + i] += lp * level * Math.exp(-i / tau);
+      }
+    }
+    // Plinks: a few a second.
+    const plinks = Math.round(9 * (total / rate));
+    for (let n = 0; n < plinks; n++) {
+      const at = Math.floor(Math.random() * total);
+      const f0 = 900 + 2400 * Math.random() ** 1.5;
+      const tau = Math.min(0.02, 18 / f0) * rate;
+      const span = Math.min(total - at, Math.round(tau * 6));
+      const level = 0.015 + 0.03 * Math.random();
+      let phase = 0;
+      for (let i = 0; i < span; i++) {
+        const f = f0 * (1 + 0.6 * (i / span));
+        phase += (2 * Math.PI * f) / rate;
+        const attack = Math.min(1, i / (0.0008 * rate));
+        d[at + i] += Math.sin(phase) * level * attack * Math.exp(-i / tau);
+      }
+    }
+    // The end crossfaded into the start, at equal power.
+    const dst = out.getChannelData(ch);
+    dst.set(d.subarray(0, length));
+    for (let i = 0; i < fade; i++) {
+      const k = (i / fade) * (Math.PI / 2);
+      dst[i] = d[i] * Math.sin(k) + d[length + i] * Math.cos(k);
+    }
+  }
+  return out;
+}
+
+function startRain() {
+  if (rain) return;
+  // Nothing low to rumble under the game, and the top softened.
+  const low = ctx.createBiquadFilter();
+  low.type = "highpass";
+  low.frequency.value = 200;
+  low.Q.value = 0.6;
+  const soft = ctx.createBiquadFilter();
+  soft.type = "lowpass";
+  soft.Q.value = 0.5;
+  const level = ctx.createGain();
+  level.gain.value = 0;
+  low.connect(soft).connect(level).connect(master);
+  rain = { level };
+  const play = (buffer, gain, cutoff) => {
+    soft.frequency.value = cutoff;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g).connect(low);
+    src.start(0, Math.random() * buffer.duration);
+  };
+  loadSound(RAIN_URL)
+    .then((buffer) => play(seamless(buffer, RAIN_TRIM, RAIN_LOOP_FADE), RAIN_GAIN, 7000))
+    .catch(() => play(rainBuffer(), SYNTH_RAIN_GAIN, 4200));
+  setRain(rainLevel, true);
+}
+
+// level: 0 for none, up to 1 for a storm's. It eases in and out over a
+// couple of seconds.
+export function setRain(level, force = false) {
+  if (level === rainLevel && !force && (rain || !level)) return;
+  rainLevel = level;
+  if (!ctx) return;
+  if (level > 0 && !rain) {
+    startRain();
+    return;
+  }
+  if (rain) rain.level.gain.setTargetAtTime(level, ctx.currentTime, level > 0 ? 0.8 : 0.6);
+}
+
+// Thunder: a roll, not a crack. One of the three recorded takes in turn,
+// eased in and out, the further off the quieter, the duller (distance
+// takes the highs off first) and a little lower and slower.
+//   near  0 for far off, 1 for close by
+//   side  -1 to 1, where across the sky it is
+const THUNDER_GAIN = 0.5;
+
+export function playThunder(near = 0.3, side = 0) {
+  if (!ready()) return;
+  let dest = master;
+  if (ctx.createStereoPanner) {
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.max(-1, Math.min(1, side * 0.6));
+    pan.connect(master);
+    dest = pan;
+  }
+  const loaded = thunderTakes.filter(Boolean);
+  if (!loaded.length) {
+    synthThunder(near, dest);
+    return;
+  }
+  const { buffer, from, to } = loaded[thunderTake++ % loaded.length];
+  const at = ctx.currentTime + 0.02;
+  const rate = (0.88 + 0.12 * near) * jitter(0.06);
+  const seconds = (to - from) / rate;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = rate;
+  const dull = ctx.createBiquadFilter();
+  dull.type = "lowpass";
+  dull.frequency.value = 450 + 7500 * near ** 1.6;
+  dull.Q.value = 0.5;
+  const g = ctx.createGain();
+  const peak = THUNDER_GAIN * (0.3 + 0.7 * near);
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(peak, at + 0.12 + 0.3 * (1 - near));
+  g.gain.setValueAtTime(peak, at + seconds - 1);
+  g.gain.linearRampToValueAtTime(0, at + seconds);
+  src.connect(dull).connect(g).connect(dest);
+  src.start(at, from, to - from);
+}
+
+// The stand-in, until a take has loaded: brown noise, low passed, under a
+// few slow swells one after another, as the sound of the bolt's length
+// arrives from nearer and further parts of it. Only a near one starts with
+// a soft crackle.
+function synthThunder(near, dest) {
+  const at = ctx.currentTime + 0.02;
+  const rate = ctx.sampleRate;
+  const seconds = 5 + 3 * (1 - near) + Math.random() * 1.5;
+  const length = Math.round(seconds * rate);
+  const buffer = ctx.createBuffer(1, length, rate);
+  const d = buffer.getChannelData(0);
+
+  const swells = [];
+  const count = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < count; i++) {
+    swells.push({
+      at: i === 0 ? 0 : Math.random() * seconds * 0.55,
+      rise: (0.12 + 0.35 * (1 - near)) * (0.6 + 0.8 * Math.random()),
+      fall: 0.6 + 1.1 * Math.random() + (1 - near) * 0.6,
+      level: i === 0 ? 1 : 0.35 + 0.6 * Math.random(),
+    });
+  }
+  let brown = 0;
+  let peak = 0;
+  for (let i = 0; i < length; i++) {
+    const t = i / rate;
+    let env = 0;
+    for (const s of swells) {
+      const u = t - s.at;
+      if (u < 0) continue;
+      env += s.level * (u < s.rise ? Math.sin((u / s.rise) * Math.PI * 0.5) ** 2 : Math.exp(-(u - s.rise) / s.fall));
+    }
+    brown = (brown + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+    d[i] = brown * env;
+    peak = Math.max(peak, Math.abs(d[i]));
+  }
+  // The very end eased to silence.
+  const tail = Math.round(0.4 * rate);
+  for (let i = 0; i < tail; i++) d[length - 1 - i] *= i / tail;
+  const norm = 1 / (peak || 1);
+
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = 0.9 + Math.random() * 0.2;
+  const low = ctx.createBiquadFilter();
+  low.type = "lowpass";
+  low.frequency.value = 140 + 420 * near;
+  low.Q.value = 0.6;
+  const rumble = ctx.createBiquadFilter();
+  rumble.type = "highpass";
+  rumble.frequency.value = 28;
+  const g = ctx.createGain();
+  g.gain.value = THUNDER_GAIN * (0.45 + 0.55 * near) * norm;
+  src.connect(low).connect(rumble).connect(g).connect(dest);
+  src.start(at);
+
+  // A near one's soft crackle as it begins: noise high passed, quiet.
+  if (near > 0.55) {
+    const crackle = (near - 0.55) / 0.45;
+    for (let i = 0; i < 6; i++) {
+      const t = at + Math.random() * 0.35;
+      burst(t, { level: 0.03 * crackle * Math.random(), decay: 0.02 + 0.04 * Math.random(), attack: 0.004, type: "bandpass", freq: 900 + 1400 * Math.random(), q: 0.7, dest });
+    }
+  }
 }
 
 // Silence the loop when the page is hidden, and bring it back after.

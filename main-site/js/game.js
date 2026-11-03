@@ -284,7 +284,7 @@ function drop(t) {
   S.taps.push(t);
   const landed = tapAt(st, t);
   if (landed?.perfect) buzz();
-  if (!st.over || st.over.at >= t) presenter.sounds(st, t - 1, t, { slosh: false, buzz });
+  if (!st.over || st.over.at >= t) presenter.sounds(st, t - 1, t, { slosh: false, thunder: false, buzz });
   if (!store.get(HINT_KEY)) {
     store.set(HINT_KEY, "1");
     show("tapHint", false);
@@ -762,9 +762,13 @@ function frame(now) {
     const st = S.preview ?? (S.preview = newGame(newSeed(), menuSettings()));
     view = presenter.view(st, 0);
     view.slab = null;
+    // The start panel's island is not the next game's, so it is always
+    // clear: a game's rain starts with the game.
+    view.weather = null;
     overview = 1;
     audio.setSlosh(0, true);
   }
+  audio.setRain(view.weather?.rain ? (view.weather.storm ? 1 : 0.8) : 0);
 
   // A replay showing, after a game or from a link: the camera is free.
   const free = S.mode === "over" || S.mode === "shared";

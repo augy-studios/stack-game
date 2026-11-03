@@ -30,11 +30,13 @@ the browser and the server always agree on a game.
 | `sim.js` | The game as data: a seed, the settings and the tap times in, every landing, cut, growth, the water and the score out. |
 | `record.js` | A game as it is kept, sent and shared, and the token a long replay link carries. |
 | `fall.js` | Cut-off pieces tipping, knocking against wider layers and splashing, worked out once in fixed steps so they fall the same way live and in the replay. |
+| `weather.js` | Whether a game rains, and when its thunder rolls and its lightning strikes, from the seed. Pure, like the four above, so a replay has the same weather. |
 | `clouds.js` | Draws the cumulus cloud sprites on a canvas, with no imports, so the Unity export draws the same ones. |
 | `post.js` | High quality's post-processing: the offscreen multisampled picture and its depth, ambient occlusion, god rays, the bloom chain, and the grade, vignette and dither it is finished with. |
+| `rain.js` | The rain and the lightning: every drop's streak and its own splash, worked out on the GPU, and the forked bolt. |
 | `scene.js` | The three.js world: the gradient sky with its drifting cumulus and cirrus, twinkling stars and night meteors, the cloud sprites, the water, the island, the tower, the slab, the pieces and the perfect rings. |
 | `view.js` | Turns a game at a moment into what the scene draws and the speakers play, for the live game and the replay alike. |
-| `audio.js` | Every sound. A falling piece's knock, a grown layer's slide, the splash and the water's loop are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
+| `audio.js` | Every sound. A falling piece's knock, a grown layer's slide, the splash, the water's loop, the rain and the thunder are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
 | `game.js` | The game screen: the start panel, play, the result, submitting, sharing, and shared replays. |
 | `replay.js` | The instant replay's controls. |
 | `shot.js` | A saved picture: the caption band along its bottom, and the download. |
@@ -62,6 +64,23 @@ picks. The slab swings faster with every layer.
 at first and faster all the time. When it is over the top of the tower, the
 game is over. It sloshes louder the closer it gets to the layer being built,
 and a chip says so.
+
+**Rain.** One game in ten starts in the rain, one in four on Hard. The seed
+decides, so a replay or a shared link rains too; the start panel's island
+is always dry. Rain brings dark clouds over a grey sky, a dimmer sun and
+less glint on the water. Every drop is a faint streak, and every one that
+lands has its own tiny splash: a few droplets thrown up and a ring
+spreading on the water, riding the waves, or just the droplets where it
+lands on the island or the top of the tower. The rain's recording
+(`sounds/Rain.mp3`) loops quietly under everything, well below the
+waves, and thunder rolls in from far off now and then, about once a
+minute, low and dull. On Hard the rain is a storm: heavier, darker, and
+lightning strikes out over the sea every ten seconds or so. Each bolt is
+forked and jagged, flickers through two to four return strokes, lights
+the clouds and the scene, and glows with bloom on high quality. Its
+thunder (`sounds/Thunder.mp3`, or one of the two rolls in
+`sounds/RainAndThunder.mp3`) follows it, later and softer the further off
+it struck. The weather is only for show: it changes nothing in the game.
 
 **A game ends** when a slab misses the tower entirely, when the water rises
 over the top, when the game's time limit runs out, or when the player leaves

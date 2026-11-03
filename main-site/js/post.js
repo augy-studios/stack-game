@@ -449,7 +449,10 @@ export function createPost(renderer) {
   //   sun        the direction of the sun in the sky, for the rays
   //   rays       how bright the rays are, 0 to 1, for the theme
   //   time       seconds, for the dither
-  function render(draw, { camera, sun, rays: rayLevel = 1, time = 0 }) {
+  //   flash      0 to about 1.4, a lightning strike: the bloom lets more
+  //              of the brightest through, so the bolt glows, but not so
+  //              much that its jagged core is lost in it
+  function render(draw, { camera, sun, rays: rayLevel = 1, time = 0, flash = 0 }) {
     fit();
     renderer.setRenderTarget(sceneTarget);
     draw();
@@ -479,6 +482,7 @@ export function createPost(renderer) {
 
     // Bloom.
     brightMat.uniforms.uTexel.value.set(1 / w, 1 / h);
+    brightMat.uniforms.uCeiling.value = CEILING + flash * 0.9;
     run(brightMat, levels[0]);
     for (let i = 1; i < LEVELS; i++) {
       downMat.uniforms.uSource.value = levels[i - 1].texture;
