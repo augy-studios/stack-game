@@ -12,6 +12,10 @@
 //   meteors  now and then a shooting star, at night
 //   cirrus   thin, unshaded streaks of high cloud
 //   cumulus  heaped clouds lower down, lit on top and shaded underneath
+//   rain     _Overcast thickens the cumulus; _Flash lights the whole sky
+//            for a lightning strike, most round _FlashX (the bolt's place
+//            across the screen, 0 to 1), the clouds from inside, brighter
+//            than white so the bloom takes it (Scripts/Rain.cs)
 // The two cloud layers lie on flat planes overhead, seen in perspective,
 // and the wind carries them in from the horizon. _Pan turns them, and the
 // stars, with the camera.
@@ -34,6 +38,9 @@ Shader "uwuStack/Sky"
         _Cumulus ("Cumulus", Range(0, 1)) = 0.85
         _Cirrus ("Cirrus", Range(0, 1)) = 0.55
         _Pan ("Pan", Float) = 0
+        _Overcast ("Overcast", Range(0, 1)) = 0
+        _Flash ("Lightning Flash", Float) = 0
+        _FlashX ("Lightning Across", Float) = 0.5
         [Toggle(_LOW_QUALITY)] _LowQuality ("Low Quality", Float) = 0
     }
 
@@ -69,6 +76,9 @@ Shader "uwuStack/Sky"
                 half _Cumulus;
                 half _Cirrus;
                 float _Pan;
+                half _Overcast;
+                float _Flash;
+                float _FlashX;
                 float _LowQuality;
             CBUFFER_END
 
@@ -193,6 +203,7 @@ Shader "uwuStack/Sky"
                 }
 
                 float h = y - 0.4;
+                float cloudy = 0.0;
                 if (h > 0.0)
                 {
                     // Cirrus, on a high plane.
@@ -210,8 +221,10 @@ Shader "uwuStack/Sky"
                     float nearPlane = 1.0 / (h + 0.08);
                     float2 p = float2((uv.x - 0.5 + _Pan) * aspect * nearPlane * 0.9, nearPlane * 1.4);
                     p += float2(t * 0.03, t * 0.05);
-                    float dens = Cumulus(p, t);
+                    // Rain thickens the cloud.
+                    float dens = Cumulus(p, t) + _Overcast * 0.24;
                     float body = smoothstep(0.5, 0.6, dens);
+                    cloudy = body * smoothstep(0.0, 0.18, h);
                     if (body > 0.0)
                     {
                         float upper = Cumulus(p + float2(0.0, 0.35), t);
@@ -221,6 +234,16 @@ Shader "uwuStack/Sky"
                         float haze = smoothstep(0.0, 0.18, h);
                         c = lerp(c, cloud, body * haze * _Cumulus);
                     }
+                }
+
+                // Lightning: the whole sky lit for an instant, most round the
+                // bolt, the clouds from inside.
+                if (_Flash > 0.0)
+                {
+                    float x = (uv.x - _FlashX) * aspect;
+                    float nearBolt = exp(-x * x * 3.0);
+                    float lit = _Flash * (0.25 + 0.75 * nearBolt) * (0.35 + 0.65 * smoothstep(0.3, 0.8, y)) * (0.6 + 0.9 * cloudy);
+                    c += float3(0.82, 0.86, 1.0) * lit;
                 }
 
                 return half4(c, 1);
