@@ -60,6 +60,9 @@ const S = {
   race: null,
   countdownAt: 0,
   startedAt: 0,
+  // When the game being played or watched was played, ms since 1970, or
+  // null when a shared replay does not say.
+  playedAt: null,
   shared: null,
   overAt: 0,
   preview: null,
@@ -175,6 +178,7 @@ export function startGame(opts = {}) {
   S.taps = [];
   S.ticket = null;
   S.startedAt = performance.now();
+  S.playedAt = Date.now();
   S.record = null;
   S.finishing = null;
   S.submitted = false;
@@ -492,8 +496,12 @@ async function submit(name) {
 
 /* ---- sharing a replay ---- */
 
+// The day it was played rides along as its own parameter, in base 36
+// seconds, rather than in the record's token: builds that do not know it
+// ignore it, and the record stays exactly what is played and checked.
 function longLink(record) {
-  return `${location.origin}/?watch=${packRecord(record)}`;
+  const played = S.playedAt ? `&played=${Math.floor(S.playedAt / 1000).toString(36)}` : "";
+  return `${location.origin}/?watch=${packRecord(record)}${played}`;
 }
 
 async function shareReplay() {
@@ -510,7 +518,11 @@ async function shareReplay() {
       const body =
         S.mode === "over" && S.ticket && S.finishing && !S.autoUsed
           ? { game_id: S.ticket.game_id, name: getSettings().name }
-          : { record, name: S.mode === "shared" ? S.shared.name : getSettings().name };
+          : {
+              record,
+              name: S.mode === "shared" ? S.shared.name : getSettings().name,
+              ...(S.playedAt ? { played_at: new Date(S.playedAt).toISOString() } : {}),
+            };
       if (body.game_id) await S.finishing;
       const r = await api.createReplay(body);
       link = `${location.origin}/r/${r.id}`;
@@ -598,14 +610,16 @@ function shotInfo() {
     bestRun: st.bestCombo,
     seed: st.seed,
     auto: shared ? Boolean(S.shared?.record?.auto) : S.autoUsed,
+    playedAt: S.playedAt,
   };
 }
 
 /* ---- watching a shared replay ---- */
 
-export function openShared({ record, name = null, verified = false, id = null, state }) {
+export function openShared({ record, name = null, verified = false, id = null, playedAt = null, state }) {
   S.mode = "shared";
   S.shared = { record, name, verified, id };
+  S.playedAt = playedAt;
   S.state = state;
   S.race = null;
   sheets("result");

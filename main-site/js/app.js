@@ -99,9 +99,24 @@ function readLinks() {
   const short = location.pathname.match(/^\/r\/([A-Za-z0-9]{8})\/?$/);
   return {
     watch: params.get("watch"),
+    played: playedParam(params.get("played")),
     short: short ? short[1] : null,
     join: location.pathname.replace(/\/$/, "") === "/join" ? params.get("id") : params.get("join"),
   };
+}
+
+// A long link's played=, base 36 seconds, as ms; null if missing or not a
+// believable time (before the game existed, or more than a day ahead).
+function playedParam(value) {
+  if (!value || !/^[0-9a-z]{1,8}$/.test(value)) return null;
+  const ms = parseInt(value, 36) * 1000;
+  return ms >= Date.UTC(2024, 0, 1) && ms <= Date.now() + 86400000 ? ms : null;
+}
+
+// The API's played_at, an ISO time, as ms, or null.
+function playedAt(value) {
+  const ms = typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(ms) ? ms : null;
 }
 
 function watch(record, meta = {}) {
@@ -118,7 +133,8 @@ async function openShort(id) {
   try {
     const data = await api.replay(id);
     const record = cleanRecord(data.record);
-    if (watch(record, { name: data.name ?? null, verified: data.verified === true, id })) return true;
+    const meta = { name: data.name ?? null, verified: data.verified === true, id, playedAt: playedAt(data.played_at) };
+    if (watch(record, meta)) return true;
   } catch (err) {
     toast(err.code === "offline" ? "Opening a short replay link needs a connection." : "That replay could not be found.");
   }
@@ -144,7 +160,7 @@ function boot() {
   // A replay link stays in the address while it is watched, so a reload
   // shows it again.
   if (links.watch) {
-    if (watch(unpackRecord(links.watch))) history.replaceState(null, "", startUrl);
+    if (watch(unpackRecord(links.watch), { playedAt: links.played })) history.replaceState(null, "", startUrl);
   } else if (links.short) {
     openShort(links.short).then((ok) => ok && history.replaceState(null, "", startUrl));
   }

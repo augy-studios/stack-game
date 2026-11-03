@@ -29,8 +29,9 @@ function cssVar(name, fallback) {
 }
 
 // The words, from what game.js passes:
-//   name, score, high, mode, perfects, bestRun, seed, auto
-function lines(info, day) {
+//   name, score, high, mode, perfects, bestRun, seed, auto, and playedAt,
+//   when it was played in ms since 1970, or null if nobody knows
+function lines(info) {
   const result = [
     `${info.high} high`,
     `${info.mode} mode`,
@@ -42,8 +43,16 @@ function lines(info, day) {
   return {
     title: info.name || points,
     result: (info.name ? [points, ...result] : result).join("  ·  "),
-    detail: `Seed ${info.seed}  ·  ${day}`,
+    detail: info.playedAt ? `Seed ${info.seed}  ·  ${playedOn(info.playedAt)}` : `Seed ${info.seed}`,
   };
+}
+
+// Day, month, year, the month short and in English like the rest of the
+// game, in the viewer's own time zone: "3 Nov 2026".
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function playedOn(ms) {
+  const d = new Date(ms);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 // Sets `font` at `size`, smaller if need be so `text` fits in `room`.
@@ -72,8 +81,7 @@ export async function caption(canvas, info) {
   );
   const icon = await loadIcon();
 
-  const day = new Date().toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-  const text = lines(info, day);
+  const text = lines(info);
   const pad = Math.round(34 * u);
   const gap = Math.round(30 * u);
   const host = location.host;

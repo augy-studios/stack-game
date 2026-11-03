@@ -123,7 +123,13 @@ tower is in the middle of the picture rather than above where the panel
 sat. A frosted band along the bottom, in the game's font and the theme's
 colours (`shot.js`), names the player if they have a name, then the final
 score, height, mode, perfects and best run (and autoplay, if it played),
-the seed and the day, with uwuStack and the site's address in the corner.
+the seed and the day it was played ("3 Nov 2026"), with uwuStack and the
+site's address in the corner. A game just played is dated when it started.
+A long replay link carries the day as `&played=` (base 36 seconds, beside
+the record's token so older builds ignore it); a short link's is kept by
+the API, the server's own start time for a game it checked. An older short
+link to an unchecked game shows the day the link was made, and a long link
+from before `played=` shows no date.
 It goes straight to the browser's downloads on every device.
 
 **Quality.** Settings has High and Low graphics. Low draws one pixel per
@@ -226,8 +232,8 @@ every change to anything in this directory.
 | `POST /api/game/submit` | `game_id, client_key, name, record` | `name, score, layers, elapsed_ms, rank, best_score, total, games, total_rank` |
 | `POST /api/leaderboard/name` | `name` | `name`, cleaned, or a `400` saying why not |
 | `GET /api/leaderboard` | `?board=best`, `?board=tallest` or `?board=total` | `board, entries`, cached 30 s |
-| `POST /api/replay/create` | `game_id, client_key, name?`, or `record, name?` | `id`, for `/r/<id>` |
-| `GET /api/replay` | `?id=` | `record, name, verified, created_at`, cached a day |
+| `POST /api/replay/create` | `game_id, client_key, name?`, or `record, name?, played_at?` | `id`, for `/r/<id>` |
+| `GET /api/replay` | `?id=` | `record, name, verified, created_at, played_at`, cached a day |
 
 `mode` is `solo` or `party`. `record` is `js/record.js`'s shape. Errors are
 `{ error, message? }` with a matching status. Start and finish are limited to

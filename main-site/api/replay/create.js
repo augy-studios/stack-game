@@ -3,8 +3,13 @@
 //   { game_id, client_key, name? }   a game this API started and the page
 //                                    finished: stored from the server's
 //                                    own copy, and marked checked
-//   { record, name? }                any other game, a race or one started
+//   { record, name?, played_at? }    any other game, a race or one started
 //                                    offline: stored as sent, unchecked
+//
+// When the game was played is kept beside the record in the stored body,
+// as played_at: the server's own start time for a game it started, and for
+// any other the time sent, if it is a believable one. Readers of a record
+// take only the fields they know, so it never changes how a game plays.
 //
 // The page links to /r/<id>, much shorter than the long link that carries
 // the whole game. A game has one short link; asking again returns the same
@@ -32,6 +37,14 @@ function nameOrNull(value) {
   }
 }
 
+// An ISO time from 2024 on and no more than a day ahead, or null.
+function playedAtOrNull(value) {
+  if (typeof value !== "string" || value.length > 40) return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms) || ms < Date.UTC(2024, 0, 1) || ms > Date.now() + 86400000) return null;
+  return new Date(ms).toISOString();
+}
+
 async function store(row) {
   // Eight characters from 55 make a clash vanishingly rare, but a second
   // try costs nothing.
@@ -50,7 +63,7 @@ async function store(row) {
 async function fromGame(body) {
   const id = gameId(body.game_id);
   const key = clientKey(body.client_key);
-  const [game] = (await rest(`uwustack_games?id=eq.${id}&client_key=eq.${encodeURIComponent(key)}&select=id,record`)) ?? [];
+  const [game] = (await rest(`uwustack_games?id=eq.${id}&client_key=eq.${encodeURIComponent(key)}&select=id,record,created_at`)) ?? [];
   if (!game) throw new HttpError(404, "not_found", "That game does not exist.");
   if (!game.record) throw new HttpError(409, "not_finished", "Only a finished game can be replayed.");
 
@@ -59,7 +72,8 @@ async function fromGame(body) {
 
   const record = readRecord(game.record);
   try {
-    return { id: await store({ game_id: id, verified: true, name: nameOrNull(body.name), body: record }) };
+    const stored = { ...record, played_at: game.created_at };
+    return { id: await store({ game_id: id, verified: true, name: nameOrNull(body.name), body: stored }) };
   } catch (err) {
     // Asked twice at once: the other request stored it first.
     const [row] = (await rest(`uwustack_replays?game_id=eq.${id}&select=id`)) ?? [];
@@ -71,7 +85,9 @@ async function fromGame(body) {
 async function fromRecord(body) {
   const record = readRecord(body.record);
   if (runRecord(record).error) throw new HttpError(400, "bad_record", "Those taps do not make a game.");
-  return { id: await store({ verified: false, name: nameOrNull(body.name), body: record }) };
+  const played = playedAtOrNull(body.played_at);
+  const stored = played ? { ...record, played_at: played } : record;
+  return { id: await store({ verified: false, name: nameOrNull(body.name), body: stored }) };
 }
 
 export default endpoint("POST", async ({ req, body }) => {
