@@ -543,7 +543,10 @@ async function shareReplay() {
 // The canvas holds the scene and nothing else: the panels, the score cards
 // and the buttons are all HTML laid over it, so a copy of the canvas is the
 // picture without them. WebGL lets its drawing buffer go once a frame is on
-// screen, so the copy is taken in frame(), straight after the draw.
+// screen, so frame() draws the picture, copies it at once, then draws the
+// frame as usual over it: only that last draw reaches the screen. The
+// picture is framed as if no panel were there, so on a narrow screen the
+// tower sits in its middle rather than above where the panel was.
 let shotWanted = false;
 
 function takeShot() {
@@ -740,8 +743,12 @@ function frame(now) {
   // A replay showing, after a game or from a link: the camera is free.
   const free = S.mode === "over" || S.mode === "shared";
   setFree(free);
-  scene?.draw({ ...view, overview, cover: sheetCover(), dt, clock, orbit: free ? orbit : null });
-  if (shotWanted) captureShot();
+  const look = { ...view, overview, cover: sheetCover(), clock, orbit: free ? orbit : null };
+  if (shotWanted && scene) {
+    scene.draw({ ...look, dt: 0, shot: true });
+    captureShot();
+  }
+  scene?.draw({ ...look, dt });
   requestAnimationFrame(frame);
 }
 
@@ -762,7 +769,14 @@ function onKey(e) {
     onTap();
     return;
   }
-  if ((S.mode === "over" || S.mode === "shared") && !onButton) {
+  // P takes a picture whatever has focus: it means nothing to a button.
+  const replaying = S.mode === "over" || S.mode === "shared";
+  if (replaying && (e.key === "p" || e.key === "P") && !(e.ctrlKey || e.metaKey || e.altKey)) {
+    e.preventDefault();
+    if (!e.repeat) takeShot();
+    return;
+  }
+  if (replaying && !onButton) {
     if (e.key === " ") {
       e.preventDefault();
       replay.toggle();

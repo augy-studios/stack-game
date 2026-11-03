@@ -1227,6 +1227,8 @@ export function createScene(canvas, { quality = "high" } = {}) {
   //   dt         real seconds since the last frame
   //   clock      real seconds, for the waves and the clouds
   //   orbit      the replay's free camera, js/freecam.js, or null
+  //   shot       true for a saved picture: framed as if no panel covered
+  //              the screen, centred and pulled back no further than that
   function draw(view) {
     resize();
     const { t, seedNum, layers, count, overview = 0, cover = 0, dt = 0.016, clock = 0 } = view;
@@ -1339,6 +1341,8 @@ export function createScene(canvas, { quality = "high" } = {}) {
     orb.lift += (want.lift - orb.lift) * glide;
 
     const dist = cam.dist * orb.zoom;
+    // A picture has no panel over it: undo the pull back a panel asks for.
+    const away = view.shot ? dist / (1 + overview * (1 / (1 - cam.cover) - 1)) : dist;
     const screen = 2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * dist;
     // Lifted no further than from the island to just over the top. The
     // clamped lift goes back into the orbit, so dragging back from past an
@@ -1358,9 +1362,9 @@ export function createScene(canvas, { quality = "high" } = {}) {
     // the height, so the whole tower in view sits in the middle too.
     const along = top > 0 ? THREE.MathUtils.clamp(ty / top, 0, 1) : 0;
     const target = new THREE.Vector3(cam.x * along, ty, cam.z * along);
-    camera.position.copy(target).addScaledVector(look3, dist);
+    camera.position.copy(target).addScaledVector(look3, away);
     camera.lookAt(target);
-    if (cam.cover > 0.002) camera.setViewOffset(width, height, 0, (height * cam.cover) / 2, width, height);
+    if (cam.cover > 0.002 && !view.shot) camera.setViewOffset(width, height, 0, (height * cam.cover) / 2, width, height);
     else camera.clearViewOffset();
 
     scene.fog.near = dist * 2.5;

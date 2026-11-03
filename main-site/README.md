@@ -111,9 +111,11 @@ look from higher or lower, pinch or scroll to zoom, drag with two fingers
 (or the right mouse button, or Shift) to move up and down it, and
 double-tap to put it back.
 
-**Pictures.** The camera button on the replay bar saves a PNG of the scene
-at that moment, from wherever the free camera is looking: only the canvas,
-so none of the panels, score cards or buttons over it. On a phone it goes
+**Pictures.** The camera button on the replay bar, or P, saves a PNG of the
+scene at that moment, from wherever the free camera is looking: only the
+canvas, so none of the panels, score cards or buttons over it. It is framed
+as if no panel were there, so on a narrow screen the tower is in the middle
+of the picture rather than above where the panel sat. On a phone it goes
 through the share sheet, so it can go straight into the photos; anywhere
 else it downloads.
 
