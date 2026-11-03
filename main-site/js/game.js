@@ -538,6 +538,60 @@ async function shareReplay() {
   setTimeout(() => (label.textContent = "Share replay"), 2500);
 }
 
+/* ---- a picture of the tower ---- */
+
+// The canvas holds the scene and nothing else: the panels, the score cards
+// and the buttons are all HTML laid over it, so a copy of the canvas is the
+// picture without them. WebGL lets its drawing buffer go once a frame is on
+// screen, so the copy is taken in frame(), straight after the draw.
+let shotWanted = false;
+
+function takeShot() {
+  if (!scene || shotWanted) return;
+  shotWanted = true;
+  $("rpShot").disabled = true;
+}
+
+function captureShot() {
+  shotWanted = false;
+  $("stage").toBlob((blob) => {
+    $("rpShot").disabled = false;
+    if (blob) saveShot(blob);
+    else toast("Could not take the picture.");
+  }, "image/png");
+}
+
+function shotName() {
+  const d = new Date();
+  const two = (n) => String(n).padStart(2, "0");
+  const day = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+  return `uwustack-${day}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}.png`;
+}
+
+// On a phone, the share sheet, which can put it in the photos; anywhere
+// else, or if that is refused, a download.
+async function saveShot(blob) {
+  const name = shotName();
+  const file = new File([blob], name, { type: "image/png" });
+  if (matchMedia("(pointer: coarse)").matches && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "uwuStack" });
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  toast("Picture saved.");
+}
+
 /* ---- watching a shared replay ---- */
 
 export function openShared({ record, name = null, verified = false, id = null, state }) {
@@ -687,6 +741,7 @@ function frame(now) {
   const free = S.mode === "over" || S.mode === "shared";
   setFree(free);
   scene?.draw({ ...view, overview, cover: sheetCover(), dt, clock, orbit: free ? orbit : null });
+  if (shotWanted) captureShot();
   requestAnimationFrame(frame);
 }
 
@@ -789,6 +844,7 @@ export function initGame({ onRace }) {
   });
   $("resultBoardBtn").addEventListener("click", () => openLeaderboard());
   $("shareBtn").addEventListener("click", shareReplay);
+  $("rpShot").addEventListener("click", takeShot);
   $("foldBtn").addEventListener("click", () => {
     const folded = $("result").classList.toggle("folded");
     $("foldBtn").setAttribute("aria-expanded", String(!folded));

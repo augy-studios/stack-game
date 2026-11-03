@@ -111,6 +111,12 @@ look from higher or lower, pinch or scroll to zoom, drag with two fingers
 (or the right mouse button, or Shift) to move up and down it, and
 double-tap to put it back.
 
+**Pictures.** The camera button on the replay bar saves a PNG of the scene
+at that moment, from wherever the free camera is looking: only the canvas,
+so none of the panels, score cards or buttons over it. On a phone it goes
+through the share sheet, so it can go straight into the photos; anywhere
+else it downloads.
+
 **Quality.** Settings has High and Low graphics. Low draws one pixel per
 CSS pixel without antialiasing and gives the water a coarser mesh and no
 fine ripples, for a smoother game on a slower device. High also gives the
