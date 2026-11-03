@@ -18,7 +18,8 @@ const GROW_MS = 670;
 // After the game ends the water keeps rising this long, then stops.
 const AFTER_MS = 2500;
 
-export function createPresenter() {
+// playedAt: () => when the game showing was played, ms since 1970, or null.
+export function createPresenter({ playedAt = () => null } = {}) {
   let game = null;
   let weather = null;
   const falls = new Map();
@@ -26,7 +27,7 @@ export function createPresenter() {
   function bind(state) {
     if (state !== game) {
       game = state;
-      weather = weatherOf(game.seedNum, game.settings.difficulty);
+      weather = weatherOf(game.seedNum, game.settings.difficulty, playedAt());
       falls.clear();
     }
   }

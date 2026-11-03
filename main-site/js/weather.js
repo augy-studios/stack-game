@@ -2,9 +2,11 @@
 // rolls. Pure, with no DOM and no clock, and drawn from the seed, so a
 // replay rains and thunders exactly as the game did.
 //
-// One game in five starts in the rain. On Hard it is three in five, and
-// Hard's rain is a storm: lightning now and then, its thunder arriving a
-// moment later, the further off the strike the longer after and the softer.
+// One game in five starts in the rain, and on Hard three in five (one in
+// ten and one in four before RAIN_CHANGED_AT, which replays of older games
+// keep). Hard's rain is a storm: lightning now and then, its thunder
+// arriving a moment later, the further off the strike the longer after
+// and the softer.
 // Ordinary rain has no lightning, only a distant roll of thunder now and
 // then.
 //
@@ -20,6 +22,11 @@ const EVENT_SALT = 0x7468756e;
 
 // How many games in five rain.
 const CHANCE = { easy: 1, medium: 1, hard: 3 };
+// Until RAIN_CHANGED_AT it was 1 in n games, and a game played before then,
+// or one whose time nobody knows (every game since records it), keeps the
+// weather it was played in.
+const OLD_CHANCE = { easy: 10, medium: 10, hard: 4 };
+export const RAIN_CHANGED_AT = Date.UTC(2026, 10, 3, 22, 0);
 
 // Thunder comes at most once a slot, at a time in it the seed picks, in
 // that share of slots. A storm's slots are shorter.
@@ -34,9 +41,12 @@ export const FLASH_MS = 650;
 const DELAY_MS = 700;
 const DELAY_SPREAD = 2800;
 
-export function weatherOf(seedNum, difficulty) {
-  const n = CHANCE[difficulty] ?? CHANCE.medium;
-  const rain = mix(seedNum, RAIN_SALT) % 5 < n;
+// playedAt: when the game was played, ms since 1970, or null if unknown.
+export function weatherOf(seedNum, difficulty, playedAt = null) {
+  const h = mix(seedNum, RAIN_SALT);
+  const rain = playedAt != null && playedAt >= RAIN_CHANGED_AT
+    ? h % 5 < (CHANCE[difficulty] ?? CHANCE.medium)
+    : h % (OLD_CHANCE[difficulty] ?? OLD_CHANCE.medium) === 0;
   return { rain, storm: rain && difficulty === "hard" };
 }
 

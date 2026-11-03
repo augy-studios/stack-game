@@ -65,7 +65,9 @@ at first and faster all the time. When it is over the top of the tower, the
 game is over. It sloshes louder the closer it gets to the layer being built,
 and a chip says so.
 
-**Rain.** One game in five starts in the rain, three in five on Hard. The seed
+**Rain.** One game in five starts in the rain, three in five on Hard
+(before 3 Nov 2026 22:00 UTC it was one in ten and one in four, and replays
+of games played then keep the weather they had). The seed
 decides, so a replay or a shared link rains too; the start panel's island
 is always dry. Rain brings dark clouds over a grey sky, a dimmer sun and
 less glint on the water. Every drop is a faint streak, and every one that

@@ -82,12 +82,25 @@ namespace UwuStack
             return h;
         }
 
-        // difficulty: "easy", "medium" or "hard".
+        // The web game's RAIN_CHANGED_AT: games played before it rained in
+        // 1 in 10, 1 in 4 on Hard, and its replays keep that weather.
+        public const long RainChangedAt = 1793743200000L; // 2026-11-03 22:00 UTC
+
+        // difficulty: "easy", "medium" or "hard". A game played now.
         public static Kind Of(uint seedNum, string difficulty)
         {
-            uint n = difficulty == "hard" ? 3u : 1u;
-            bool rain = Mix(seedNum, RainSalt) % 5u < n;
-            return new Kind { Rain = rain, Storm = rain && difficulty == "hard" };
+            return Of(seedNum, difficulty, RainChangedAt);
+        }
+
+        // playedAtMs: when the game was played, ms since 1970.
+        public static Kind Of(uint seedNum, string difficulty, long playedAtMs)
+        {
+            bool hard = difficulty == "hard";
+            uint h = Mix(seedNum, RainSalt);
+            bool rain = playedAtMs >= RainChangedAt
+                ? h % 5u < (hard ? 3u : 1u)
+                : h % (hard ? 4u : 10u) == 0;
+            return new Kind { Rain = rain, Storm = rain && hard };
         }
 
         static bool EventIn(Kind w, uint seedNum, long k, out Event e)

@@ -69,7 +69,7 @@ const S = {
 };
 
 let scene = null;
-const presenter = createPresenter();
+const presenter = createPresenter({ playedAt: () => S.playedAt });
 const replay = createReplay();
 let raceHooks = null;
 let clock = 0;
