@@ -42,6 +42,9 @@ namespace UwuStack
         // clouds that drift round it.
         public Vector2 Centre => new Vector2(x, z);
 
+        // The point it looks at, after easing, for the rain round it.
+        public Vector3 Target { get; private set; }
+
         Camera cam;
         float top;
         Vector2 topXZ;
@@ -124,6 +127,7 @@ namespace UwuStack
             // tower in view sits in the middle too.
             float along = top > 0 ? Mathf.Clamp01(ty / top) : 0;
             var target = new Vector3(x * along, ty, z * along);
+            Target = target;
             transform.position = target + look * dist;
             transform.LookAt(target);
 

@@ -31,6 +31,9 @@ Material:
     - _Cumulus: 0.85
     - _Cirrus: 0.55
     - _Pan: 0
+    - _Overcast: 0
+    - _Flash: 0
+    - _FlashX: 0.5
     - _LowQuality: 0
     m_Colors:
     - _TopColor: {r: 0.874000, g: 0.848333, b: 0.566000, a: 1}

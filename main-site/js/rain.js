@@ -204,9 +204,12 @@ const SPLASH_FRAGMENT = `
     if (vPart < 0.5) {
       // A ring, and a fainter one inside it once it has spread.
       float d = length(vUv);
-      float ring = exp(-pow((d - 0.8) * 9.0, 2.0));
-      float inner = exp(-pow((d - 0.42) * 12.0, 2.0)) * smoothstep(0.25, 0.6, vS) * 0.5;
-      a = (ring + inner) * pow(1.0 - vS, 2.0) * 0.5;
+      // Squared by hand: pow() of a negative number is undefined.
+      float ro = (d - 0.8) * 9.0;
+      float ri = (d - 0.42) * 12.0;
+      float ring = exp(-ro * ro);
+      float inner = exp(-ri * ri) * smoothstep(0.25, 0.6, vS) * 0.5;
+      a = (ring + inner) * (1.0 - vS) * (1.0 - vS) * 0.5;
     } else {
       // Droplets thrown up and out on arcs, falling back as they go, and
       // the drop's own rebound, a little column, at the start.

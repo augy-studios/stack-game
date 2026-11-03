@@ -62,7 +62,7 @@ const CLOUD_TINT = mix([1, 1, 1], SKY_HORIZON, 0.1);
 
 /* ---- shaders ---- */
 
-const SHADERS = ["Lambert", "Foliage", "UnlitTransparent", "Water", "Sky"];
+const SHADERS = ["Lambert", "Foliage", "UnlitTransparent", "Water", "Sky", "Rain", "Lightning"];
 for (const name of SHADERS) {
   meta(`Shaders/${name}.shader`, `ShaderImporter:
   externalObjects: {}
@@ -188,8 +188,12 @@ material("Water", "Water", {
 });
 material("Sky", "Sky", {
   colours: { _TopColor: colour(SKY_TOP), _HorizonColor: colour(SKY_HORIZON), _BottomColor: colour(SKY_BOTTOM), _CloudLit: colour(CLOUD_LIT), _CloudShade: colour(CLOUD_SHADE) },
-  floats: { _Glow: 0.35, _StarsOpacity: 0.6, _Meteors: 0, _Cumulus: 0.85, _Cirrus: 0.55, _Pan: 0, _LowQuality: 0 },
+  floats: { _Glow: 0.35, _StarsOpacity: 0.6, _Meteors: 0, _Cumulus: 0.85, _Cirrus: 0.55, _Pan: 0, _Overcast: 0, _Flash: 0, _FlashX: 0.5, _LowQuality: 0 },
 });
+// The weather (Scripts/Rain.cs sets the rest each frame).
+material("RainDrops", "Rain", { colours: { _Colour: colour([0.62, 0.68, 0.76]) }, floats: { _Opacity: 0.75, _Splash: 0 } });
+material("RainSplashes", "Rain", { colours: { _Colour: colour([0.93, 0.96, 1]) }, floats: { _Opacity: 0.6, _Splash: 1 }, keywords: ["_SPLASH"] });
+material("Lightning", "Lightning", { colours: { _Core: colour([1, 1, 1]), _Glow: colour([0.55, 0.65, 1]) }, floats: { _Bright: 0 } });
 const unlit = (name, { colour: c = [1, 1, 1], alpha = 1, cull = 0, zwrite = 0, vertexColours = false, map = null }) =>
   material(name, "UnlitTransparent", {
     colours: { _BaseColor: colour(c, alpha) },

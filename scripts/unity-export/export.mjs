@@ -4,9 +4,10 @@
 //
 // 1. meshes.mjs builds the scene's meshes as glTF, and Blender turns them
 //    into FBX (set BLENDER to blender.exe if it is not in the usual place)
-// 2. browser-assets.mjs draws the textures and icons and renders the
-//    synthesised sounds in a headless Chromium (set CHROME if needed)
-// 3. ffmpeg copies the four recordings and trims each to where the game
+// 2. browser-assets.mjs draws the textures and icons, renders the
+//    synthesised sounds, and builds the water's and the rain's loops and
+//    the thunder takes, in a headless Chromium (set CHROME if needed)
+// 3. ffmpeg copies the recordings and trims each to where the game
 //    starts playing it
 // 4. unity-meta.mjs writes the materials and the .meta files that wire it
 //    all together
@@ -52,7 +53,7 @@ run(process.execPath, [path.join(HERE, "browser-assets.mjs"), ASSETS]);
 const sounds = path.join(ROOT, "main-site/sounds");
 const originals = path.join(ASSETS, "Audio/Originals");
 fs.mkdirSync(originals, { recursive: true });
-for (const f of fs.readdirSync(sounds).filter((f) => f.endsWith(".wav"))) fs.copyFileSync(path.join(sounds, f), path.join(originals, f));
+for (const f of fs.readdirSync(sounds).filter((f) => /\.(wav|mp3)$/.test(f))) fs.copyFileSync(path.join(sounds, f), path.join(originals, f));
 for (const [from, start, to] of [
   ["SoccerKick.wav", 0.04, "Hit.wav"],
   ["waterSplash.wav", 0.26, "Splash.wav"],

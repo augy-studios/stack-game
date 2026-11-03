@@ -16,12 +16,12 @@ game, then run that again.
 
 | Folder | What | Made from |
 | --- | --- | --- |
-| `Audio/` | Every sound, ready to play: the recordings trimmed to where the game starts them (`Hit`, `Splash`, `Grow`), the seamless water loop, and the synthesised ones rendered to WAV (`Drop1-3`, `Land1-3`, `GameOver`, `Perfect01_C3` to `Perfect22_C6`) | `main-site/sounds/`, `js/audio.js` |
-| `Audio/Originals/` | The four recordings, untouched | `main-site/sounds/` |
+| `Audio/` | Every sound, ready to play: the recordings trimmed to where the game starts them (`Hit`, `Splash`, `Grow`), the seamless water and rain loops, the three thunder takes (`Thunder1-3`), and the synthesised ones rendered to WAV (`Drop1-3`, `Land1-3`, `GameOver`, `Perfect01_C3` to `Perfect22_C6`) | `main-site/sounds/`, `js/audio.js` |
+| `Audio/Originals/` | The recordings, untouched | `main-site/sounds/` |
 | `Audio/Fallback/` | The stand-ins the game synthesises until a recording loads; Unity does not need them | `js/audio.js` |
 | `Meshes/` | FBX: `Block` (every layer, slab and piece), the island whole (`Island`) and in parts, foliage, splash crown and drop, perfect ring frame and plate, and the sea at two densities | `js/scene.js` |
 | `Materials/` | One per surface, set up for the shaders below | `js/scene.js` |
-| `Shaders/` | URP ports of the scene's look: `Lambert` (solids), `Foliage` (sway), `Unlit Transparent` (effects, clouds), `Water`, `Sky` (skybox), and `GodRays` for the renderer feature. The solids and plants cast and take the sun's shadow and take URP's ambient occlusion; the water takes the shadow | `js/scene.js`, `js/post.js` |
+| `Shaders/` | URP ports of the scene's look: `Lambert` (solids), `Foliage` (sway), `Unlit Transparent` (effects, clouds), `Water`, `Sky` (skybox), `Rain` (the drops and their splashes), `Lightning` (the bolt), and `GodRays` for the renderer feature. The solids and plants cast and take the sun's shadow and take URP's ambient occlusion; the water takes the shadow | `js/scene.js`, `js/post.js` |
 | `Scripts/` | C# ports of the animation and the numbers they run on: see below | `js/*.js` |
 | `Textures/` | `Cloud.png`: the five cloud shapes at 2x, stacked top to bottom | `js/clouds.js` |
 | `Icons/UI/` | Every UI icon, white on clear at 128 px, imported as sprites to tint | `js/icons.js` |
@@ -74,6 +74,16 @@ same way, so everything lines up. Use it, not your own conversion.
    in UTC (null leaves the date off). P does the same with `CurrentInfo`
    while *Hotkey* is on; turn it off while a text field has the keyboard.
 
+7. For the weather: `Rain` on an empty object, with `Materials/RainDrops`,
+   `Materials/RainSplashes` and `Materials/Lightning`, the camera's
+   `TowerCamera`, the sea's `WaterSurface` and the `GameAudio`; and put
+   the `Rain` in `SceneLook`'s *Rain* field. Each frame give it the seed
+   (as text), the difficulty, the game's time in milliseconds (live or
+   replayed), the top layer's footprint and height, and tick *Clear* while
+   the start panel shows. Call `Snap()` for a new game or a jump. Tick its
+   *Low Quality* with the rest. Give `GameAudio` `Audio/RainLoop.wav` and
+   the three `Audio/Thunder*.wav`. Bloom needs HDR on, as in step 5.
+
 Tower layers are `Meshes/Block.fbx` with `Materials/Block`, scaled to
 `(sx, 0.2, sz)` and coloured per renderer with a `MaterialPropertyBlock`
 holding `_BaseColor = Palette.Layer(seed, n)`.
@@ -97,12 +107,17 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 | `PostLook` | High quality's look on URP's own effects: the sun's soft shadows, ambient occlusion, god rays, bloom, colour, vignette and dither, as `js/scene.js` and `js/post.js`; all off with *Low Quality* |
 | `GodRays` | A URP renderer feature (render graph): light shafts fanning out round the tower from the sun's glint, as `js/post.js` |
 | `TowerCamera` | The follow camera, overview and free-camera offsets |
-| `GameAudio` | Every sound at the game's levels and pitches, and the water loop dulling with distance |
+| `Weather` | `js/weather.js` in plain C#: whether a game rains (1 in 10, 1 in 4 on Hard, where it is a storm), when thunder rolls, lightning strikes and gusts blow, and a strike's flicker, all from the seed and the game's time |
+| `Rain` | The weather as `js/rain.js`: thousands of drops and each one's splash drawn by `Shaders/Rain.shader` with no mesh, gusts slanting them, the forked bolt built for each strike, its flash, and the thunder handed to `GameAudio`. Low quality draws the drops without splashes |
+| `GameAudio` | Every sound at the game's levels and pitches, the water loop dulling with distance, the rain's loop, and thunder quieter and duller the further off |
 | `TowerScreenshot` | The camera button's picture, as `js/game.js` and `js/shot.js`: the camera drawn again at 4K (3840 along the longer side, held to 4K UHD's pixel count, 6 MP on a phone, never below the screen) with no UI layer, framed so all of what the player sees fits above the caption band (the view keeps its top edge and widens down and to the sides), the band drawn over its bottom, and the PNG saved: the Downloads folder on Windows (wherever it was moved), macOS and Linux (XDG's), a browser download in WebGL, the app's own `Screenshots` folder on Android and iOS |
 | `ShotCaption` | What the band says and where each piece goes, in plain C#: the name or the score large, the result, the seed and the day played as "3 Nov 2026", uwuStack and the address in the corner, or on its own row when the picture is too narrow |
 
-`Rules`, `Fall` and the splash hash were checked against the JavaScript on
-the same inputs and give identical results. Scoring, replays, the
+`Rules`, `Fall`, the splash hash and `Weather` were checked against the
+JavaScript on the same inputs and give identical results (`Weather` on
+400 seeds at every difficulty: the same rain, storms, thunder and strike
+times and gusts, its floats differing from the JavaScript's doubles only
+past the third decimal). Scoring, replays, the
 leaderboard and multiplayer are not here: they are game logic and server
 code, not assets.
 
@@ -128,6 +143,9 @@ code, not assets.
   shrunk and stretched back, not a true blur; and the colours are the
   classic theme's, light or dark, where the web follows whichever colour
   theme is picked.
+- **Rain drops** take their own random numbers from a hash of each
+  instance, not the web game's list, so the same seed rains the same
+  weather but not drop for drop.
 - **Foliage in `Island.fbx`** keeps its sway in the UVs: uv0 is each
   plant's root and uv1 how far it moves. Don't let anything regenerate
   those UVs (lightmap UVs go in uv2, which is fine).
@@ -141,6 +159,13 @@ inspected directly. The shaders, materials and `.meta` files are untested:
 if a material shows pink, select its shader again in the Inspector. If an
 FBX comes in with its own materials, use *Materials > Search and Remap*: the
 names match `Materials/`.
+
+`Weather`, `Rain`, and the weather parts of `SceneLook`, `GameAudio` and
+`TowerCamera` were compiled with .NET 8 against stand-ins for the Unity
+calls they use, written to Unity 6's signatures. `Shaders/Rain.shader`
+and `Shaders/Lightning.shader` are ports of shaders checked in Chromium,
+but have not been compiled by Unity: how the rain, the splashes and the
+bolt look in URP has not been seen.
 
 `TowerScreenshot` and `ShotCaption` were compiled with Mono against
 stand-ins for the Unity calls they use, written to Unity 6's signatures,

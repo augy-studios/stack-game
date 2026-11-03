@@ -31,7 +31,7 @@ function findChrome() {
 
 // The repo, served, so the page can load js/audio.js and the recordings.
 function serve() {
-  const types = { ".js": "text/javascript", ".wav": "audio/wav", ".html": "text/html" };
+  const types = { ".js": "text/javascript", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".html": "text/html" };
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(new URL(req.url, "http://x").pathname);
     if (url === "/") {
@@ -165,7 +165,7 @@ export function __bind(c) {
   master.connect(c.destination);
   noise = makeNoise();
 }
-export { seamless, synthSlosh, SLOSH_URL };
+export { seamless, synthSlosh, SLOSH_URL, RAIN_URL, RAIN_TRIM, RAIN_LOOP_FADE, THUNDER_TAKES };
 \`;
   window.audio = await import(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
 
@@ -274,6 +274,35 @@ const LOOPS = `(async () => {
   return { WaterLoop: wav(recorded), "Fallback/WaterLoopSynth": wav(synth) };
 })()`;
 
+// The weather's: the rain's loop as the game builds it from sounds/Rain.mp3,
+// trimmed and crossfaded end into start, and the three thunder takes cut
+// where js/audio.js cuts them, eased in over 50 ms and out over the last
+// second. Scripts/GameAudio.cs does the rest: each roll's level, swell,
+// pitch and dullness for how far off it is.
+const WEATHER = `(async () => {
+  const ctx = new OfflineAudioContext(2, 44100, 44100);
+  audio.__bind(ctx);
+  const load = async (url) => ctx.decodeAudioData(await (await fetch("/main-site" + url)).arrayBuffer());
+  const out = { RainLoop: wav(audio.seamless(await load(audio.RAIN_URL), audio.RAIN_TRIM, audio.RAIN_LOOP_FADE)) };
+  let n = 0;
+  for (const [url, from, to] of audio.THUNDER_TAKES) {
+    const buffer = await load(url);
+    const rate = buffer.sampleRate;
+    const start = Math.round(from * rate);
+    const length = Math.min(buffer.length, Math.round(to * rate)) - start;
+    const take = new AudioBuffer({ length, numberOfChannels: buffer.numberOfChannels, sampleRate: rate });
+    const fadeIn = Math.round(0.05 * rate);
+    const fadeOut = Math.round(1 * rate);
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const d = buffer.getChannelData(ch).slice(start, start + length);
+      for (let i = 0; i < length; i++) d[i] *= Math.min(1, i / fadeIn, (length - 1 - i) / fadeOut);
+      take.copyToChannel(d, ch);
+    }
+    out["Thunder" + ++n] = wav(take);
+  }
+  return out;
+})()`;
+
 /* ---- run ---- */
 
 const server = await serve();
@@ -284,7 +313,7 @@ try {
     write(`Icons/UI/${name[0].toUpperCase()}${name.slice(1)}.png`, png);
   }
   await page.evaluate(AUDIO_SETUP);
-  const sounds = { ...(await page.evaluate(SOUNDS)), ...(await page.evaluate(LOOPS)) };
+  const sounds = { ...(await page.evaluate(SOUNDS)), ...(await page.evaluate(LOOPS)), ...(await page.evaluate(WEATHER)) };
   for (const [name, { base64, peak }] of Object.entries(sounds)) {
     write(`Audio/${name}.wav`, base64);
     if (peak > 1) console.warn(`  ${name} clipped: peak ${peak.toFixed(2)}`);

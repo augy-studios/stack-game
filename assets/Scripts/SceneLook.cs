@@ -10,6 +10,12 @@ namespace UwuStack
     // Put it on any object and fill in the materials it should drive. It
     // also sets the scene's ambient light to a gradient, as the game's
     // hemisphere light, its fog, and the sun's direction.
+    //
+    // With Rain filled in, the weather too, as js/scene.js: any rain greys
+    // the sky, brings dark slate clouds, thickens them, puts out the stars,
+    // dims the sun and its glint and the god rays; a storm more so; and a
+    // lightning strike lights the sky round the bolt, the scene and the
+    // water's mirrored sky.
     public class SceneLook : MonoBehaviour
     {
         [Header("Materials")]
@@ -27,6 +33,9 @@ namespace UwuStack
 
         [Header("Camera")]
         public TowerCamera rig;     // the sky pans as it turns
+
+        [Header("Weather")]
+        public Rain rain;           // optional
 
         [Header("Now")]
         public bool dark;
@@ -54,10 +63,45 @@ namespace UwuStack
             ready = false;
         }
 
+        // Towards its own grey by k, and darker by dim.
+        static Color Overcast(Color c, float k, float dim)
+        {
+            float l = c.r * 0.3f + c.g * 0.59f + c.b * 0.11f;
+            Color o = Color.Lerp(c, new Color(l, l, l, c.a), k) * (1 - dim);
+            o.a = c.a;
+            return o;
+        }
+
+        // Rain clouds' lit tops and dark undersides, slate grey, and the
+        // light of a strike.
+        static readonly Color RainLit = new Color(0.56f, 0.58f, 0.63f);
+        static readonly Color RainShade = new Color(0.3f, 0.32f, 0.37f);
+        static readonly Color FlashLight = new Color(0.85f, 0.88f, 1.0f);
+
         void Update()
         {
             int h = Palette.HueOf(seedNum, topLayer);
             Palette.Look look = Palette.For(h, dark);
+            float wet = rain != null ? rain.Wet : 0;
+            float r = rain != null ? rain.Rainy : 0;
+            float storm = rain != null ? rain.Stormy : 0;
+            float flash = rain != null ? rain.Flash : 0;
+            if (wet > 0)
+            {
+                look.SkyTop = Overcast(look.SkyTop, 0.7f * r, 0.3f * r + 0.15f * storm);
+                look.SkyHorizon = Overcast(look.SkyHorizon, 0.65f * r, 0.32f * r + 0.12f * storm);
+                look.SkyBottom = Overcast(look.SkyBottom, 0.55f * r, 0.22f * r + 0.12f * storm);
+                look.Glow *= 1 - 0.85f * r;
+                look.Stars *= 1 - wet;
+                look.Meteors *= 1 - wet;
+                look.Cumulus = Mathf.Min(1, look.Cumulus + 0.15f * r);
+                look.Clouds = Mathf.Min(0.95f, look.Clouds + 0.12f * r);
+                look.Glint *= 1 - 0.8f * r - 0.1f * storm;
+                look.WaterDeep = Overcast(look.WaterDeep, 0.3f * wet, 0.08f * wet);
+                look.WaterShallow = Overcast(look.WaterShallow, 0.3f * wet, 0.08f * wet);
+                look.Sun *= 1 - 0.4f * r - 0.15f * storm;
+                look.Ambient *= 1 - 0.1f * wet;
+            }
             if (!ready)
             {
                 top = look.SkyTop;
@@ -72,6 +116,14 @@ namespace UwuStack
             // The foam follows the eased horizon, as the scene's does.
             if (!dark) look.WaterFoam = Palette.Mix(Color.white, horizon, 0.12f);
             Palette.CloudColours(dark, top, horizon, out Color cloudLit, out Color cloudShade, out Color cloudTint);
+            if (r > 0)
+            {
+                // Any rain brings dark rain clouds, a storm's darker still.
+                float deep = (dark ? 0.45f : 1f) * (1 - 0.3f * storm);
+                cloudLit = Color.Lerp(cloudLit, RainLit * deep, r);
+                cloudShade = Color.Lerp(cloudShade, RainShade * deep, r);
+                cloudTint = Color.Lerp(cloudTint, RainLit * (deep * 0.95f), r);
+            }
 
             if (sky != null)
             {
@@ -85,6 +137,9 @@ namespace UwuStack
                 sky.SetFloat("_Cirrus", look.Cirrus);
                 sky.SetColor("_CloudLit", cloudLit);
                 sky.SetColor("_CloudShade", cloudShade);
+                sky.SetFloat("_Overcast", Mathf.Max(wet, 0.8f * r));
+                sky.SetFloat("_Flash", flash * (0.5f + 0.5f * (rain != null ? rain.StrikeNear : 0)) * 0.7f);
+                if (rain != null) sky.SetFloat("_FlashX", rain.FlashX);
                 // A turn the width of the view pans the sky a screen across.
                 Camera cam = rig != null ? rig.GetComponent<Camera>() : null;
                 if (cam != null)
@@ -95,8 +150,10 @@ namespace UwuStack
             }
             if (water != null)
             {
-                water.SetColor("_HorizonColor", horizon);
-                water.SetColor("_TopColor", top);
+                // A strike lights the sky the water mirrors.
+                float lit = flash * (0.5f + 0.5f * (rain != null ? rain.StrikeNear : 0));
+                water.SetColor("_HorizonColor", Color.Lerp(horizon, FlashLight, Mathf.Min(1, 0.25f * lit)));
+                water.SetColor("_TopColor", Color.Lerp(top, FlashLight, Mathf.Min(1, 0.25f * lit)));
                 water.SetColor("_DeepColor", look.WaterDeep);
                 water.SetColor("_ShallowColor", look.WaterShallow);
                 water.SetColor("_FoamColor", look.WaterFoam);
@@ -125,13 +182,19 @@ namespace UwuStack
 
             // The hemisphere light: the sky's colour from above, grey from
             // below, the horizon between.
-            Color skyLight = Palette.Mix(top, Color.white, 0.6f) * look.Ambient;
+            float strikeLight = flash * (0.5f + 0.5f * (rain != null ? rain.StrikeNear : 0));
+            Color skyLight = Color.Lerp(Palette.Mix(top, Color.white, 0.6f), FlashLight, Mathf.Min(1, 0.6f * strikeLight)) * (look.Ambient + 0.8f * strikeLight);
             Color groundLight = look.AmbientGround * look.Ambient;
             RenderSettings.ambientSkyColor = skyLight;
             RenderSettings.ambientEquatorColor = Color.Lerp(skyLight, groundLight, 0.5f);
             RenderSettings.ambientGroundColor = groundLight;
             RenderSettings.fogColor = horizon;
-            if (sun != null) sun.intensity = look.Sun;
+            if (sun != null)
+            {
+                sun.intensity = look.Sun;
+                // Softer shadows under cloud.
+                if (sun.shadows != LightShadows.None) sun.shadowStrength = 0.9f * (1 - 0.45f * wet);
+            }
         }
     }
 }
