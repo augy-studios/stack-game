@@ -1429,6 +1429,46 @@ export function createScene(canvas, { quality = "high" } = {}) {
     else paint();
   }
 
+  // A picture bigger than the screen: the canvas's drawing buffer is
+  // enlarged for one draw, copied onto a 2D canvas, and put back. The
+  // post-processing targets follow the drawing buffer by themselves.
+  // Whoever calls this draws the next frame straight after, in the same
+  // task, so the enlarged picture never reaches the screen.
+  //   long       pixels wanted along the picture's longer side
+  //   maxPixels  no more pixels than this in all, to spare GPU memory
+  // Returns the 2D canvas, or null if the picture could not be drawn.
+  function capture(view, { long, maxPixels }) {
+    resize();
+    const gl = renderer.getContext();
+    const viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+    const biggest = Math.min(
+      gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      gl.getParameter(gl.MAX_RENDERBUFFER_SIZE),
+      viewport[0],
+      viewport[1]
+    );
+    const before = renderer.getPixelRatio();
+    const side = Math.max(width, height);
+    const ratio = Math.max(
+      before,
+      Math.min(long / side, Math.sqrt(maxPixels / (width * height)), biggest / side)
+    );
+    try {
+      renderer.setPixelRatio(ratio);
+      draw(view);
+      const copy = document.createElement("canvas");
+      copy.width = canvas.width;
+      copy.height = canvas.height;
+      copy.getContext("2d").drawImage(canvas, 0, 0);
+      return copy;
+    } catch (err) {
+      console.error(err);
+      return null;
+    } finally {
+      renderer.setPixelRatio(before);
+    }
+  }
+
   // Snaps the camera to wherever it is going on the next frame, for a jump
   // in the replay or a new game.
   function snapCamera() {
@@ -1438,5 +1478,5 @@ export function createScene(canvas, { quality = "high" } = {}) {
   readTheme();
   setQuality(quality);
 
-  return { draw, readTheme, snapCamera, setQuality, resize: () => { width = 0; resize(); } };
+  return { draw, capture, readTheme, snapCamera, setQuality, resize: () => { width = 0; resize(); } };
 }

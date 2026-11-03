@@ -22,6 +22,7 @@ import { packRecord } from "./record.js";
 import { createScene } from "./scene.js";
 import { createPresenter } from "./view.js";
 import { createReplay } from "./replay.js";
+import { caption, save as saveShot } from "./shot.js";
 import { orbit, setFree, initFreecam } from "./freecam.js";
 import * as audio from "./audio.js";
 import { api } from "./api.js";
@@ -547,6 +548,16 @@ async function shareReplay() {
 // frame as usual over it: only that last draw reaches the screen. The
 // picture is framed as if no panel were there, so on a narrow screen the
 // tower sits in its middle rather than above where the panel was.
+//
+// It is drawn at 4K, 3840 pixels along the longer side, whatever the
+// screen, in the graphics quality the player has picked, and js/shot.js
+// puts the player's name and the game along the bottom. A 4K draw with
+// High's post-processing briefly takes about half a gigabyte of GPU memory,
+// so it is held to 4K UHD's pixel count in all, and to about 6 megapixels
+// on a phone, where running out loses the game's graphics.
+const SHOT_LONG = 3840;
+const SHOT_MAX_PIXELS = 3840 * 2160;
+const SHOT_MAX_PIXELS_PHONE = 6e6;
 let shotWanted = false;
 
 function takeShot() {
@@ -555,44 +566,39 @@ function takeShot() {
   $("rpShot").disabled = true;
 }
 
-function captureShot() {
+function captureShot(view) {
   shotWanted = false;
-  $("stage").toBlob((blob) => {
-    $("rpShot").disabled = false;
-    if (blob) saveShot(blob);
-    else toast("Could not take the picture.");
-  }, "image/png");
+  const phone = matchMedia("(pointer: coarse)").matches;
+  const picture = scene.capture(view, { long: SHOT_LONG, maxPixels: phone ? SHOT_MAX_PIXELS_PHONE : SHOT_MAX_PIXELS });
+  const info = shotInfo();
+  (async () => {
+    if (!picture) throw new Error("no picture");
+    await caption(picture, info);
+    await saveShot(picture);
+    toast(`Picture saved, ${picture.width} × ${picture.height}.`);
+  })()
+    .catch((err) => {
+      console.error(err);
+      toast("Could not take the picture.");
+    })
+    .finally(() => ($("rpShot").disabled = false));
 }
 
-function shotName() {
-  const d = new Date();
-  const two = (n) => String(n).padStart(2, "0");
-  const day = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
-  return `uwustack-${day}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}.png`;
-}
-
-// On a phone, the share sheet, which can put it in the photos; anywhere
-// else, or if that is refused, a download.
-async function saveShot(blob) {
-  const name = shotName();
-  const file = new File([blob], name, { type: "image/png" });
-  if (matchMedia("(pointer: coarse)").matches && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: "uwuStack" });
-      return;
-    } catch (err) {
-      if (err?.name === "AbortError") return;
-    }
-  }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-  toast("Picture saved.");
+// What the band along the bottom says: the finished game, whatever moment
+// of the replay is showing, and the player's name if there is one.
+function shotInfo() {
+  const st = replay.state;
+  const shared = S.mode === "shared";
+  return {
+    name: (shared ? S.shared?.name : getSettings().name) || "",
+    score: scoreOf(st),
+    high: st.layers.length - 1,
+    mode: difficultyOf(st.settings.difficulty).label,
+    perfects: st.perfects,
+    bestRun: st.bestCombo,
+    seed: st.seed,
+    auto: shared ? Boolean(S.shared?.record?.auto) : S.autoUsed,
+  };
 }
 
 /* ---- watching a shared replay ---- */
@@ -744,10 +750,7 @@ function frame(now) {
   const free = S.mode === "over" || S.mode === "shared";
   setFree(free);
   const look = { ...view, overview, cover: sheetCover(), clock, orbit: free ? orbit : null };
-  if (shotWanted && scene) {
-    scene.draw({ ...look, dt: 0, shot: true });
-    captureShot();
-  }
+  if (shotWanted && scene) captureShot({ ...look, dt: 0, shot: true });
   scene?.draw({ ...look, dt });
   requestAnimationFrame(frame);
 }

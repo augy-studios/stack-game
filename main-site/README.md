@@ -37,6 +37,7 @@ the browser and the server always agree on a game.
 | `audio.js` | Every sound. A falling piece's knock, a grown layer's slide, the splash and the water's loop are recordings in `sounds/`; the rest are synthesised with Web Audio. The water's sounds get quieter and duller the further below the top it is. |
 | `game.js` | The game screen: the start panel, play, the result, submitting, sharing, and shared replays. |
 | `replay.js` | The instant replay's controls. |
+| `shot.js` | A saved picture: the caption band along its bottom, and the download. |
 | `party.js` | Races on one network, on top of `net.js`. |
 | `net.js` | Pairing over PeerJS, STUN only, from `STUN-p2p-spec.md`, after uwuChess's. |
 | `qr.js` | QR encoder for the join link, from uwuPromptr, so it works offline. |
@@ -113,11 +114,17 @@ double-tap to put it back.
 
 **Pictures.** The camera button on the replay bar, or P, saves a PNG of the
 scene at that moment, from wherever the free camera is looking: only the
-canvas, so none of the panels, score cards or buttons over it. It is framed
-as if no panel were there, so on a narrow screen the tower is in the middle
-of the picture rather than above where the panel sat. On a phone it goes
-through the share sheet, so it can go straight into the photos; anywhere
-else it downloads.
+canvas, so none of the panels, score cards or buttons over it. It is drawn
+again off screen at 4K, 3840 pixels along the longer side (3840 x 2160 on
+a 16:9 screen), in the graphics quality picked in Settings, held to 4K
+UHD's pixel count in all and to about 6 megapixels on a phone to spare GPU
+memory. It is framed as if no panel were there, so on a narrow screen the
+tower is in the middle of the picture rather than above where the panel
+sat. A frosted band along the bottom, in the game's font and the theme's
+colours (`shot.js`), names the player if they have a name, then the final
+score, height, mode, perfects and best run (and autoplay, if it played),
+the seed and the day, with uwuStack and the site's address in the corner.
+It goes straight to the browser's downloads on every device.
 
 **Quality.** Settings has High and Low graphics. Low draws one pixel per
 CSS pixel without antialiasing and gives the water a coarser mesh and no
