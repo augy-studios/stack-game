@@ -7,7 +7,7 @@ namespace UwuStack
     // Plain C#, drawn from the seed with the same unsigned 32-bit sums as
     // the JavaScript, so a seed gets exactly the same weather in both.
     //
-    // One game in ten starts in the rain; on Hard one in four, and Hard's
+    // One game in five starts in the rain; on Hard three in five, and Hard's
     // rain is a storm, with lightning and its thunder after it, the further
     // off the later and the softer. Ordinary rain has no lightning, only a
     // distant roll of thunder now and then. In any rain a light gust now and
@@ -85,8 +85,8 @@ namespace UwuStack
         // difficulty: "easy", "medium" or "hard".
         public static Kind Of(uint seedNum, string difficulty)
         {
-            uint n = difficulty == "hard" ? 4u : 10u;
-            bool rain = Mix(seedNum, RainSalt) % n == 0;
+            uint n = difficulty == "hard" ? 3u : 1u;
+            bool rain = Mix(seedNum, RainSalt) % 5u < n;
             return new Kind { Rain = rain, Storm = rain && difficulty == "hard" };
         }
 

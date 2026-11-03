@@ -2,7 +2,7 @@
 // rolls. Pure, with no DOM and no clock, and drawn from the seed, so a
 // replay rains and thunders exactly as the game did.
 //
-// One game in ten starts in the rain. On Hard it is one in four, and
+// One game in five starts in the rain. On Hard it is three in five, and
 // Hard's rain is a storm: lightning now and then, its thunder arriving a
 // moment later, the further off the strike the longer after and the softer.
 // Ordinary rain has no lightning, only a distant roll of thunder now and
@@ -18,8 +18,8 @@ import { mix } from "./seed.js";
 const RAIN_SALT = 0x7261696e;
 const EVENT_SALT = 0x7468756e;
 
-// 1 in n games rain.
-const CHANCE = { easy: 10, medium: 10, hard: 4 };
+// How many games in five rain.
+const CHANCE = { easy: 1, medium: 1, hard: 3 };
 
 // Thunder comes at most once a slot, at a time in it the seed picks, in
 // that share of slots. A storm's slots are shorter.
@@ -36,7 +36,7 @@ const DELAY_SPREAD = 2800;
 
 export function weatherOf(seedNum, difficulty) {
   const n = CHANCE[difficulty] ?? CHANCE.medium;
-  const rain = mix(seedNum, RAIN_SALT) % n === 0;
+  const rain = mix(seedNum, RAIN_SALT) % 5 < n;
   return { rain, storm: rain && difficulty === "hard" };
 }
 
