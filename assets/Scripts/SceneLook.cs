@@ -11,6 +11,12 @@ namespace UwuStack
     // also sets the scene's ambient light to a gradient, as the game's
     // hemisphere light, its fog, and the sun's direction.
     //
+    // The sun moves as js/scene.js moves it (Scripts/SunPath.cs): each
+    // game's seed puts it somewhere a little different and it wanders
+    // slowly by gameMs, so set seedNum and gameMs each frame. The key light,
+    // the water's glint, the sky's glow, the sun's disc (Scripts/SunDisc.cs)
+    // and the god rays and lens flare (Scripts/GodRays.cs) follow it.
+    //
     // With Rain filled in, the weather too, as js/scene.js: any rain greys
     // the sky, brings dark slate clouds, thickens them, puts out the stars,
     // dims the sun and its glint and the god rays; a storm more so; and a
@@ -41,6 +47,7 @@ namespace UwuStack
         public bool dark;
         public int seedNum = 0;
         public int topLayer = 0;
+        public double gameMs = 0;   // the game's time, live or replayed, for the sun's wander
 
         Color top, horizon, bottom;
         bool ready;
@@ -53,8 +60,8 @@ namespace UwuStack
             RenderSettings.fogMode = FogMode.Linear;
             if (sky != null) RenderSettings.skybox = sky;
             // The sun sits up and behind the camera's right, and the water's
-            // glint low behind the tower.
-            if (sun != null) sun.transform.rotation = Quaternion.LookRotation(-World.FromThree(-2.2f, 5f, 3.4f));
+            // glint low behind the tower; Update() turns both each game.
+            if (sun != null) sun.transform.rotation = Quaternion.LookRotation(-SunPath.KeyFrom);
         }
 
         // Jumps straight to the colours, for a new game.
@@ -102,6 +109,15 @@ namespace UwuStack
                 look.Sun *= 1 - 0.4f * r - 0.15f * storm;
                 look.Ambient *= 1 - 0.1f * wet;
             }
+            // The sun's disc and flare: full by day, a pale moon by night,
+            // gone in rain.
+            float disc = (dark ? 0.3f : 1f) * (1 - Mathf.Min(1f, 1.2f * r));
+            SunPath.Place(unchecked((uint)seedNum), gameMs);
+            SunPath.Disc = disc;
+            Shader.SetGlobalVector("_SunGlint", SunPath.Glint);
+            Shader.SetGlobalFloat("_SunSkyY", SunPath.SkyY);
+            Shader.SetGlobalFloat("_SunDisc", disc);
+
             if (!ready)
             {
                 top = look.SkyTop;
@@ -158,6 +174,7 @@ namespace UwuStack
                 water.SetColor("_ShallowColor", look.WaterShallow);
                 water.SetColor("_FoamColor", look.WaterFoam);
                 water.SetFloat("_Glint", look.Glint);
+                water.SetVector("_SunDir", SunPath.Glint);
             }
             // The god rays, as bright as the glint: full by day, faint by
             // night (Scripts/GodRays.cs).
@@ -192,6 +209,7 @@ namespace UwuStack
             if (sun != null)
             {
                 sun.intensity = look.Sun;
+                sun.transform.rotation = Quaternion.LookRotation(-SunPath.KeyFrom);
                 // Softer shadows under cloud.
                 if (sun.shadows != LightShadows.None) sun.shadowStrength = 0.9f * (1 - 0.45f * wet);
             }

@@ -21,7 +21,7 @@ game, then run that again.
 | `Audio/Fallback/` | The stand-ins the game synthesises until a recording loads; Unity does not need them | `js/audio.js` |
 | `Meshes/` | FBX: `Block` (every layer, slab and piece), the island whole (`Island`) and in parts, foliage, splash crown and drop, perfect ring frame and plate, and the sea at two densities | `js/scene.js` |
 | `Materials/` | One per surface, set up for the shaders below | `js/scene.js` |
-| `Shaders/` | URP ports of the scene's look: `Lambert` (solids), `Foliage` (sway), `Unlit Transparent` (effects, clouds), `Water`, `Sky` (skybox), `Rain` (the drops and their splashes), `Lightning` (the bolt), and `GodRays` for the renderer feature. The solids and plants cast and take the sun's shadow and take URP's ambient occlusion; the water takes the shadow | `js/scene.js`, `js/post.js` |
+| `Shaders/` | URP ports of the scene's look: `Lambert` (solids), `Foliage` (sway), `Unlit Transparent` (effects, clouds), `Water`, `Sky` (skybox), `Rain` (the drops and their splashes), `Lightning` (the bolt), `Sun` (the sun's disc), and `GodRays` for the renderer feature (god rays and lens flare). The solids and plants cast and take the sun's shadow and take URP's ambient occlusion; the water takes the shadow | `js/scene.js`, `js/post.js` |
 | `Scripts/` | C# ports of the animation and the numbers they run on: see below | `js/*.js` |
 | `Textures/` | `Cloud.png`: the five cloud shapes at 2x, stacked top to bottom | `js/clouds.js` |
 | `Icons/UI/` | Every UI icon, white on clear at 128 px, imported as sprites to tint | `js/icons.js` |
@@ -63,6 +63,15 @@ same way, so everything lines up. Use it, not your own conversion.
    then drop that Renderer Data into `PostLook`'s *Renderer Data* field so
    Low Quality turns them off. On empty objects: `SceneLook`,
    `CloudDrift`, `Splashes` and `GameAudio`, with their fields filled in.
+   Each frame give `SceneLook` the seed number and the game's time in
+   milliseconds (`gameMs`, live or replayed): the sun moves by them.
+   Projects set up before the sun moved keep the God Rays feature's old
+   numbers in their Renderer Data; for the stronger rays set Intensity
+   0.75, Density 0.95, Decay 0.968 and Threshold 0.85 (new features start
+   with them).
+   For the sun's disc: `SunDisc` on an empty object, with
+   `Shaders/Sun.shader` in its *Shader* field. It draws on low quality
+   too; the flare and rays are high quality only.
 
 6. For the replay bar's camera button: `TowerScreenshot` on the camera too,
    with `Fonts/Jua-Regular.ttf` (imported as a dynamic Font, the default)
@@ -105,7 +114,9 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 | `LayerGrow` | A layer's side easing back out after a run of perfects |
 | `CloudDrift` | The sixteen cumulus sprites the wind carries past the tower, fading in and out |
 | `PostLook` | High quality's look on URP's own effects: the sun's soft shadows, ambient occlusion, god rays, bloom, colour, vignette and dither, as `js/scene.js` and `js/post.js`; all off with *Low Quality* |
-| `GodRays` | A URP renderer feature (render graph): light shafts fanning out round the tower from the sun's glint, as `js/post.js` |
+| `GodRays` | A URP renderer feature (render graph): light shafts fanning out round the tower from the sun, and a lens flare when the sun is in view and not hidden behind the tower, as `js/post.js` |
+| `SunPath` | Where the sun is, as `js/scene.js`'s `placeSun()`: turned round and raised or lowered by the seed, wandering slowly by the game's time, so a replay sees the same sky; and where it lands on a camera's screen |
+| `SunDisc` | Draws the sun's disc (`Shaders/Sun.shader`) over the far water and behind anything solid |
 | `TowerCamera` | The follow camera, overview and free-camera offsets |
 | `Weather` | `js/weather.js` in plain C#: whether a game rains (1 in 5, 3 in 5 on Hard, or 1 in 10 and 1 in 4 for games played before the change, where it is a storm), when thunder rolls, lightning strikes and gusts blow, and a strike's flicker, all from the seed and the game's time |
 | `Rain` | The weather as `js/rain.js`: thousands of drops and each one's splash drawn by `Shaders/Rain.shader` with no mesh, gusts slanting them, the forked bolt built for each strike, its flash, and the thunder handed to `GameAudio`. Low quality draws the drops without splashes |
@@ -113,7 +124,9 @@ holding `_BaseColor = Palette.Layer(seed, n)`.
 | `TowerScreenshot` | The camera button's picture, as `js/game.js` and `js/shot.js`: the camera drawn again at 4K (3840 along the longer side, held to 4K UHD's pixel count, 6 MP on a phone, never below the screen) with no UI layer, framed so all of what the player sees fits above the caption band (the view keeps its top edge and widens down and to the sides), the band drawn over its bottom, and the PNG saved: the Downloads folder on Windows (wherever it was moved), macOS and Linux (XDG's), a browser download in WebGL, the app's own `Screenshots` folder on Android and iOS |
 | `ShotCaption` | What the band says and where each piece goes, in plain C#: the name or the score large, the result, the seed and the day played as "3 Nov 2026", uwuStack and the address in the corner, or on its own row when the picture is too narrow |
 
-`Rules`, `Fall`, the splash hash and `Weather` were checked against the
+`SunPath` was checked against the JavaScript on 5 seeds at 3 times each
+and gives identical directions, heights and screen positions. `Rules`,
+`Fall`, the splash hash and `Weather` were checked against the
 JavaScript on the same inputs and give identical results (`Weather` on
 400 seeds at every difficulty: the same rain, storms, thunder and strike
 times and gusts, its floats differing from the JavaScript's doubles only

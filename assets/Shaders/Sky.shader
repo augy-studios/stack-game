@@ -3,7 +3,7 @@
 // The game draws it flat across the screen, top to bottom, so the whole
 // gradient shows whichever way the camera looks: horizon colour at 45% of
 // the screen's height, easing to the top colour above and the bottom
-// colour below, and a soft glow low in the middle where the light is. Being
+// colour below, and a soft glow low under the sun (Scripts/SunPath.cs). Being
 // a skybox here changes none of that: it works out where on the screen each
 // pixel is, not where it looks.
 //
@@ -82,6 +82,25 @@ Shader "uwuStack/Sky"
                 float _LowQuality;
             CBUFFER_END
 
+            // The sun, set globally by Scripts/SceneLook.cs (Scripts/SunPath.cs).
+            float4 _SunGlint;
+
+            // How far across this camera's screen the sun is, 0 to 1, as
+            // Shaders/Sun.shader's SunScreen(). Straight ahead before
+            // SceneLook has set it.
+            float SunAcross()
+            {
+                if (dot(_SunGlint.xyz, _SunGlint.xyz) < 1e-6) return 0.5;
+                float3 forward = -UNITY_MATRIX_V[2].xyz;
+                float3 heading = normalize(float3(forward.x, 0, forward.z) + float3(0, 0, 1e-5));
+                float3 side = cross(float3(0, 1, 0), heading);
+                float3 g = _SunGlint.xyz;
+                float off = atan2(g.x * side.x + g.z * side.z, g.x * heading.x + g.z * heading.z);
+                float aspect = _ScreenParams.x / _ScreenParams.y;
+                float across = 2.0 * atan(aspect / abs(UNITY_MATRIX_P[1][1]));
+                return 0.5 + off / across;
+            }
+
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings
             {
@@ -159,7 +178,9 @@ Shader "uwuStack/Sky"
                 float3 c = y > 0.45
                     ? lerp(_HorizonColor.rgb, _TopColor.rgb, smoothstep(0.45, 1.0, y))
                     : lerp(_BottomColor.rgb, _HorizonColor.rgb, smoothstep(0.0, 0.45, y));
-                float2 d = float2((uv.x - 0.5) * aspect, y - 0.52);
+                // The glow low over the horizon, under the sun, which
+                // Shaders/Sun.shader draws over the far water.
+                float2 d = float2((uv.x - SunAcross()) * aspect, y - 0.52);
                 float glow = exp(-dot(d, d) * 5.0);
                 c = lerp(c, float3(1, 1, 1), _Glow * glow);
 

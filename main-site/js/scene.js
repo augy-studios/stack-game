@@ -680,12 +680,14 @@ export function createScene(canvas, { quality = "high" } = {}) {
   const glint = new THREE.Vector3(-1, 0.36, -1).normalize();
   const sunSky = { y: 0.7, turn: 0 };
   function placeSun(seedNum, t) {
+    // hash() gives [-0.5, 0.5); these want [0, 1).
     const seed = (seedNum | 0) >>> 0;
+    const u = (k) => hash(seed, k) + 0.5;
     const s = (t || 0) / 1000;
-    const turn = (hash(seed, 1) * 2 - 1) * SUN_TURN
-      + SUN_WANDER * Math.sin((s / SUN_PERIOD) * Math.PI * 2 + hash(seed, 2) * Math.PI * 2);
+    const turn = (u(1) * 2 - 1) * SUN_TURN
+      + SUN_WANDER * Math.sin((s / SUN_PERIOD) * Math.PI * 2 + u(2) * Math.PI * 2);
     const high = THREE.MathUtils.clamp(
-      hash(seed, 3) * 0.85 + 0.15 * Math.sin((s / (SUN_PERIOD * 1.4)) * Math.PI * 2 + hash(seed, 4) * Math.PI * 2),
+      u(3) * 0.85 + 0.15 * Math.sin((s / (SUN_PERIOD * 1.4)) * Math.PI * 2 + u(4) * Math.PI * 2),
       0, 1
     );
     sunSky.turn = turn;
