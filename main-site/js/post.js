@@ -9,6 +9,12 @@
 //   god rays   light shafts. Whatever bright sky and water shows past the
 //              tower and the island is smeared towards the sun, so beams
 //              fan out round their silhouettes. A quarter-size radial blur.
+//   lens flare when the sun is in view, or just past the edge, and not
+//              hidden behind the tower or a cloud: glare and a starburst
+//              round it, a streak across, a faint halo ring, and ghosts
+//              strung through the middle of the screen. How much of the
+//              sun shows is measured each frame into a single pixel, eased
+//              so it fades as the tower slides across it.
 //   bloom      whatever is brighter than white, mostly the sun's path on the
 //              water, the foam and the sunlit tops, glows softly into what
 //              is round it. A bright pass at half size, blurred down a chain
@@ -41,10 +47,15 @@ const AO_SAMPLES = 12;
 
 // God rays: how far each pixel looks back towards the sun, as a share of
 // the way there, how fast each step fades, and how bright the beams.
-const RAY_SAMPLES = 40;
-const RAY_DENSITY = 0.85;
-const RAY_DECAY = 0.955;
-const RAYS = 0.4;
+const RAY_SAMPLES = 48;
+const RAY_DENSITY = 0.95;
+const RAY_DECAY = 0.968;
+const RAYS = 0.75;
+
+// Lens flare: how bright, and the sun's radius on screen, as a share of
+// the screen's height, that is looked at to see how much of it shows.
+const FLARE = 1.0;
+const SUN_RADIUS = 0.022;
 const RAY_TINT = new THREE.Color(1.0, 0.96, 0.86);
 
 const VERTEX = /* glsl */ `
@@ -232,9 +243,9 @@ const RAY_SOURCE = /* glsl */ `
   varying vec2 vUv;
   void main() {
     float open = step(0.99999, texture2D(uDepth, vUv).r);
-    vec3 c = min(texture2D(uScene, vUv).rgb, vec3(2.0));
+    vec3 c = min(texture2D(uScene, vUv).rgb, vec3(1.3));
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-    gl_FragColor = vec4(c * smoothstep(0.95, 1.6, l) * open, 1.0);
+    gl_FragColor = vec4(c * smoothstep(0.85, 1.3, l) * open, 1.0);
   }
 `;
 
@@ -264,6 +275,36 @@ const RAY_BLUR = /* glsl */ `
   }
 `;
 
+// How much of the sun shows: a grid of taps over its disc, each counting
+// where it is open sky (no depth) and still bright (no cloud over it).
+// Taps past the screen's edge count as showing, so the flare fades by
+// how far off the screen the sun is rather than by a guess. Drawn into
+// one pixel with blending, so it eases from frame to frame.
+const SUN_VISIBLE = /* glsl */ `
+  uniform sampler2D uScene;
+  uniform sampler2D uDepth;
+  uniform vec2 uSun;
+  uniform vec2 uRadius;
+  uniform vec2 uLit;
+  varying vec2 vUv;
+  void main() {
+    float seen = 0.0;
+    for (int x = -2; x <= 2; x++) {
+      for (int y = -2; y <= 2; y++) {
+        vec2 at = uSun + vec2(float(x), float(y)) * 0.5 * uRadius;
+        if (at.x < 0.0 || at.x > 1.0 || at.y < 0.0 || at.y > 1.0) {
+          seen += 1.0;
+          continue;
+        }
+        float open = step(0.99999, texture2D(uDepth, at).r);
+        float l = dot(texture2D(uScene, at).rgb, vec3(0.2126, 0.7152, 0.0722));
+        seen += open * smoothstep(uLit.x, uLit.y, l);
+      }
+    }
+    gl_FragColor = vec4(vec3(seen / 25.0), 0.18);
+  }
+`;
+
 // The finish, onto the screen.
 const FINISH = /* glsl */ `
   uniform sampler2D uScene;
@@ -271,6 +312,9 @@ const FINISH = /* glsl */ `
   uniform sampler2D uAO;
   uniform sampler2D uRays;
   uniform sampler2D uDepth;
+  uniform sampler2D uVisible;
+  uniform vec2 uSun;
+  uniform float uFlare;
   uniform float uBloomStrength;
   uniform float uAOStrength;
   uniform float uRayStrength;
@@ -286,6 +330,49 @@ const FINISH = /* glsl */ `
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
   }
 
+  // A soft disc for a ghost, brighter at its rim, as the lens's iris
+  // makes them.
+  float ghost(vec2 at, vec2 centre, float r, float aspect) {
+    float d = length((at - centre) * vec2(aspect, 1.0));
+    float body = 1.0 - smoothstep(r * 0.7, r, d);
+    float rim = exp(-pow((d - r * 0.9) / (r * 0.12), 2.0));
+    return body * 0.6 + rim * 0.5;
+  }
+
+  // The flare at a point, for the sun at uSun, before its strength.
+  vec3 flare(vec2 at, float aspect) {
+    vec2 p = (at - uSun) * vec2(aspect, 1.0);
+    float r = length(p);
+    vec3 warm = vec3(1.0, 0.93, 0.8);
+
+    // Glare round the sun, and a starburst of six spikes, the second set
+    // finer and turned.
+    vec3 c = warm * exp(-r * 30.0) * 0.25;
+    float a = atan(p.y, p.x);
+    float spikes = pow(abs(cos(a * 3.0 + 0.3)), 60.0) + 0.5 * pow(abs(cos(a * 3.0 + 0.82)), 120.0);
+    c += warm * spikes * exp(-r * 6.0) * 0.35;
+
+    // A thin streak across, blue-white.
+    c += vec3(0.75, 0.85, 1.0) * exp(-abs(p.y) * 160.0) * exp(-abs(p.x) * 2.2) * 0.22;
+
+    // A faint ring round it, each colour at its own radius.
+    vec3 ring = vec3(
+      exp(-pow((r - 0.36) * 34.0, 2.0)),
+      exp(-pow((r - 0.345) * 34.0, 2.0)),
+      exp(-pow((r - 0.33) * 34.0, 2.0)));
+    c += ring * 0.05;
+
+    // Ghosts along the line from the sun through the middle of the screen.
+    vec2 axis = vec2(0.5) - uSun;
+    c += vec3(0.65, 0.9, 1.0) * ghost(at, uSun + axis * 0.45, 0.035, aspect) * 0.12;
+    c += vec3(1.0, 0.8, 0.55) * ghost(at, uSun + axis * 0.8, 0.07, aspect) * 0.06;
+    c += vec3(0.7, 1.0, 0.75) * ghost(at, uSun + axis * 1.25, 0.025, aspect) * 0.14;
+    c += vec3(0.85, 0.7, 1.0) * ghost(at, uSun + axis * 1.55, 0.11, aspect) * 0.045;
+    c += vec3(1.0, 0.75, 0.7) * ghost(at, uSun + axis * 2.1, 0.05, aspect) * 0.09;
+    c += vec3(0.7, 0.85, 1.0) * ghost(at, uSun + axis * 2.45, 0.16, aspect) * 0.03;
+    return c;
+  }
+
   void main() {
     // Clipped as the screen would have clipped it without all this, so the
     // scene keeps its colours, then shaded and lit on top.
@@ -294,8 +381,11 @@ const FINISH = /* glsl */ `
     // The beams show in the air over the sky and the water; over something
     // solid only faintly, so they do not streak down the tower.
     float open = step(0.99999, texture2D(uDepth, vUv).r);
-    c += texture2D(uRays, vUv).rgb * uRayTint * uRayStrength * mix(0.3, 1.0, open);
+    c += texture2D(uRays, vUv).rgb * uRayTint * uRayStrength * mix(0.45, 1.0, open);
     c += texture2D(uBloom, vUv).rgb * uBloomStrength;
+
+    float seen = uFlare * texture2D(uVisible, vec2(0.5)).r;
+    if (seen > 0.002) c += flare(vUv, uSize.x / uSize.y) * seen;
 
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = mix(vec3(l), c, uSaturation);
@@ -331,10 +421,6 @@ function pass(fragmentShader, uniforms, extra = {}) {
   });
 }
 
-const sunPoint = new THREE.Vector3();
-const toSun = new THREE.Vector3();
-const facing = new THREE.Vector3();
-
 export function createPost(renderer) {
   // Half float where the device can draw into it, so brighter than white
   // survives to the bloom; plain bytes otherwise, where the bloom still
@@ -353,6 +439,7 @@ export function createPost(renderer) {
   const aoBlurred = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false, ...linear });
   const raySource = new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false, ...linear });
   const rays = new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false, ...linear });
+  const visible = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
 
   const texel = () => ({ value: new THREE.Vector2() });
   const brightMat = pass(BRIGHT, {
@@ -385,12 +472,25 @@ export function createPost(renderer) {
     uDensity: { value: RAY_DENSITY },
     uDecay: { value: RAY_DECAY },
   });
+  // With half float the sun stands out brighter than anything round it,
+  // so a cloud over it shows; in plain bytes everything stops at white,
+  // and only the tower and the island hide it.
+  const sunVisibleMat = pass(SUN_VISIBLE, {
+    uScene: { value: sceneTarget.texture },
+    uDepth: { value: depth },
+    uSun: { value: new THREE.Vector2(0.5, 0.7) },
+    uRadius: { value: new THREE.Vector2(SUN_RADIUS, SUN_RADIUS) },
+    uLit: { value: half ? new THREE.Vector2(1.02, 1.3) : new THREE.Vector2(-1, 0) },
+  }, { transparent: true, blending: THREE.NormalBlending });
   const finishMat = pass(FINISH, {
     uScene: { value: sceneTarget.texture },
     uBloom: { value: levels[0].texture },
     uAO: { value: aoBlurred.texture },
     uRays: { value: rays.texture },
     uDepth: { value: depth },
+    uVisible: { value: visible.texture },
+    uSun: { value: new THREE.Vector2(0.5, 0.7) },
+    uFlare: { value: 0 },
     uBloomStrength: { value: BLOOM },
     uAOStrength: { value: AO_STRENGTH },
     uRayStrength: { value: 0 },
@@ -446,13 +546,18 @@ export function createPost(renderer) {
   // Draws whatever draw() draws into the offscreen picture, then finishes
   // it onto the screen.
   //   camera     the camera draw() drew with
-  //   sun        the direction of the sun in the sky, for the rays
+  //   sun        where the sun is on the screen, 0 to 1 across and up,
+  //              which may be off it
+  //   facing     0 to 1, how much the camera faces the sun: 0 once it
+  //              is behind
   //   rays       how bright the rays are, 0 to 1, for the theme
+  //   flare      how bright the lens flare is, 0 to 1, for the theme and
+  //              the weather
   //   time       seconds, for the dither
   //   flash      0 to about 1.4, a lightning strike: the bloom lets more
   //              of the brightest through, so the bolt glows, but not so
   //              much that its jagged core is lost in it
-  function render(draw, { camera, sun, rays: rayLevel = 1, time = 0, flash = 0 }) {
+  function render(draw, { camera, sun, facing = 1, rays: rayLevel = 1, flare = 1, time = 0, flash = 0 }) {
     fit();
     renderer.setRenderTarget(sceneTarget);
     draw();
@@ -469,16 +574,23 @@ export function createPost(renderer) {
     // God rays, from wherever the sun lands on the screen, on or off it.
     // Fading out as the camera turns away from it, and off once it is
     // behind.
-    camera.getWorldDirection(facing);
-    toSun.copy(sun).normalize();
-    const strength = rayLevel * THREE.MathUtils.smoothstep(facing.dot(toSun), -0.1, 0.4);
+    const strength = rayLevel * facing;
     finishMat.uniforms.uRayStrength.value = strength * RAYS;
     if (strength > 0.001) {
-      sunPoint.copy(camera.position).addScaledVector(toSun, 300).project(camera);
-      rayBlurMat.uniforms.uSun.value.set(sunPoint.x * 0.5 + 0.5, sunPoint.y * 0.5 + 0.5);
+      rayBlurMat.uniforms.uSun.value.copy(sun);
       run(raySourceMat, raySource);
       run(rayBlurMat, rays);
     }
+
+    // Lens flare: how much of the sun shows, eased into its one pixel,
+    // and how far off the screen it is.
+    const outside = Math.max(0, -sun.x, sun.x - 1, -sun.y, sun.y - 1);
+    const flareStrength = flare * facing * (1 - THREE.MathUtils.smoothstep(outside, 0, 0.3)) * FLARE;
+    finishMat.uniforms.uFlare.value = flareStrength;
+    finishMat.uniforms.uSun.value.copy(sun);
+    sunVisibleMat.uniforms.uSun.value.copy(sun);
+    sunVisibleMat.uniforms.uRadius.value.set(SUN_RADIUS * h / w, SUN_RADIUS);
+    run(sunVisibleMat, visible);
 
     // Bloom.
     brightMat.uniforms.uTexel.value.set(1 / w, 1 / h);
@@ -500,9 +612,9 @@ export function createPost(renderer) {
   }
 
   function dispose() {
-    [sceneTarget, aoTarget, aoBlurred, raySource, rays, ...levels].forEach((t) => t.dispose());
+    [sceneTarget, aoTarget, aoBlurred, raySource, rays, visible, ...levels].forEach((t) => t.dispose());
     depth.dispose();
-    [brightMat, downMat, upMat, aoMat, aoBlurMat, raySourceMat, rayBlurMat, finishMat].forEach((m) => m.dispose());
+    [brightMat, downMat, upMat, aoMat, aoBlurMat, raySourceMat, rayBlurMat, sunVisibleMat, finishMat].forEach((m) => m.dispose());
     quad.geometry.dispose();
   }
 

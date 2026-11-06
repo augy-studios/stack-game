@@ -32,7 +32,7 @@ the browser and the server always agree on a game.
 | `fall.js` | Cut-off pieces tipping, knocking against wider layers and splashing, worked out once in fixed steps so they fall the same way live and in the replay. |
 | `weather.js` | Whether a game rains, and when its thunder rolls and its lightning strikes, from the seed. Pure, like the four above, so a replay has the same weather. |
 | `clouds.js` | Draws the cumulus cloud sprites on a canvas, with no imports, so the Unity export draws the same ones. |
-| `post.js` | High quality's post-processing: the offscreen multisampled picture and its depth, ambient occlusion, god rays, the bloom chain, and the grade, vignette and dither it is finished with. |
+| `post.js` | High quality's post-processing: the offscreen multisampled picture and its depth, ambient occlusion, god rays, lens flare, the bloom chain, and the grade, vignette and dither it is finished with. |
 | `rain.js` | The rain and the lightning: every drop's streak and its own splash, worked out on the GPU, and the forked bolt. |
 | `scene.js` | The three.js world: the gradient sky with its drifting cumulus and cirrus, twinkling stars and night meteors, the cloud sprites, the water, the island, the tower, the slab, the pieces and the perfect rings. |
 | `view.js` | Turns a game at a moment into what the scene draws and the speakers play, for the live game and the replay alike. |
@@ -164,10 +164,17 @@ sun soft shadows, cast by the tower, the pieces, the island and its plants
 onto each other and onto the water, and finishes every frame with
 post-processing (`post.js`): the scene is drawn into a multisampled,
 half-float picture with its depth, then ambient occlusion where surfaces
-meet, god rays fanning out round the tower from the sun's glint, a soft
+meet, strong god rays fanning out round the tower from the sun, a lens
+flare (glare, starburst, a streak, a halo ring and ghosts) whenever the sun
+is in view and not hidden behind the tower, a soft
 bloom on whatever is brighter than white, a gentle colour grade, a vignette
 and a speck of dither go on it on the way to the screen. Low skips all of
 it and frees its memory.
+
+**The sun.** Each game puts the sun somewhere a little different, turned
+round and raised or lowered by the game's seed, and it wanders slowly as
+the game goes on, by the game's own clock, so a replay sees the same sky.
+The water's glint, the key light and its shadows follow it.
 
 **Sharing a replay.** Share replay makes a link, through the device's share
 sheet where it has one and the clipboard otherwise. Online, it is a short

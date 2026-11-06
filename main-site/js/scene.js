@@ -52,8 +52,17 @@ function hash(a, b) {
 }
 
 // The sun the water glints with: low behind the tower, where the sky's
-// glow is, so its path runs across the water towards the camera.
-const GLINT = new THREE.Vector3(-1, 0.36, -1).normalize();
+// glow is, so its path runs across the water towards the camera. Each game
+// turns it round and raises or lowers it a little, by its seed, and it
+// wanders slowly while the game goes on, by the game's own clock, so a
+// replay sees the same sky. The key light that lights the tower and casts
+// its shadows turns round with it.
+const GLINT_BASE = new THREE.Vector3(-1, 0, -1).normalize();
+const SUN_FROM_BASE = new THREE.Vector3(-2.2, 5, 3.4).normalize();
+const SUN_TURN = 0.3;       // radians either side of straight behind, by seed
+const SUN_WANDER = 0.12;    // radians more either side, over SUN_PERIOD
+const SUN_PERIOD = 300;     // seconds
+const UP = new THREE.Vector3(0, 1, 0);
 
 // The camera's usual direction from the tower, as an angle up from level
 // and an angle round, which the replay's free camera turns from.
@@ -61,6 +70,8 @@ const BASE_RISE = Math.asin(DIR.y);
 const BASE_ROUND = Math.atan2(DIR.x, DIR.z);
 const NO_ORBIT = Object.freeze({ yaw: 0, pitch: 0, zoom: 1, lift: 0 });
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const sunHeading = new THREE.Vector3();
+const sunSide = new THREE.Vector3();
 
 // A layer's colour: the seed picks where on the wheel the tower starts, and
 // every layer turns it a little, so the tower fades through the colours as
@@ -72,6 +83,32 @@ export function hueOf(seedNum, n) {
 function layerColour(seedNum, n, out = new THREE.Color()) {
   return out.setHSL(hueOf(seedNum, n) / 360, 0.52, 0.64);
 }
+
+// The sun, in the same flat sky, but drawn after the water, whose far haze
+// would otherwise hide it, and behind anything solid: a square of the
+// screen round it, at the far end of the depth, added on. Brighter than
+// white, so it blooms and lights the god rays, with a soft halo.
+const SUN_VERTEX = `
+  uniform vec2 uSun;
+  uniform float uAspect;
+  varying vec2 vAt;
+  void main() {
+    vAt = position.xy * 0.25;
+    vec2 centre = uSun * 2.0 - 1.0;
+    gl_Position = vec4(centre + position.xy * 0.5 * vec2(1.0 / uAspect, 1.0), 0.99999, 1.0);
+  }
+`;
+const SUN_FRAGMENT = `
+  uniform float uSunDisc;
+  varying vec2 vAt;
+  void main() {
+    float r = length(vAt);
+    float disc = 1.0 - smoothstep(0.018, 0.023, r);
+    float halo = exp(-r * r * 1500.0) * 0.25 + exp(-r * 30.0) * 0.05;
+    halo *= 1.0 - smoothstep(0.15, 0.25, r);
+    gl_FragColor = vec4(vec3(1.0, 0.95, 0.84) * (disc * 1.5 + halo) * uSunDisc, 1.0);
+  }
+`;
 
 /* ---- textures and geometry made here, so nothing has to be fetched ---- */
 
@@ -223,6 +260,8 @@ const SKY_FRAGMENT = `
   uniform vec3 uHorizon;
   uniform vec3 uBottom;
   uniform float uGlow;
+  uniform vec2 uSun;
+  uniform float uSunDisc;
   uniform float uAspect;
   uniform float uTime;
   uniform float uPan;
@@ -291,7 +330,9 @@ const SKY_FRAGMENT = `
     vec3 c = y > 0.45
       ? mix(uHorizon, uTop, smoothstep(0.45, 1.0, y))
       : mix(uBottom, uHorizon, smoothstep(0.0, 0.45, y));
-    vec2 d = vec2((vUv.x - 0.5) * uAspect, y - 0.52);
+    // The glow low over the horizon, under the sun, which is drawn over
+    // the far water (SUN_FRAGMENT).
+    vec2 d = vec2((vUv.x - uSun.x) * uAspect, y - 0.52);
     float glow = exp(-dot(d, d) * 5.0);
     c = mix(c, vec3(1.0), uGlow * glow);
 
@@ -620,7 +661,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
   // Its shadows, on high quality: soft, from a square of the world round
   // where the camera looks, sized to how far back it is. setQuality()
   // turns them on and off; draw() moves the square.
-  const SUN_FROM = new THREE.Vector3(-2.2, 5, 3.4).normalize();
+  const SUN_FROM = SUN_FROM_BASE.clone();
   const SHADOW_MAP = 2048;
   sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   sun.shadow.bias = -0.0004;
@@ -631,8 +672,32 @@ export function createScene(canvas, { quality = "high" } = {}) {
   sun.shadow.camera.far = 90;
   // The light's own right and up, to snap the square to whole shadow-map
   // texels so its edges hold still as the camera eases.
-  const sunRight = new THREE.Vector3().crossVectors(SUN_FROM, new THREE.Vector3(0, 1, 0)).normalize();
-  const sunUp = new THREE.Vector3().crossVectors(sunRight, SUN_FROM).normalize();
+  const sunRight = new THREE.Vector3();
+  const sunUp = new THREE.Vector3();
+
+  // Where the sun is: glint, the way to it for the water and the rays;
+  // sunSky, how high it stands in the flat sky, 0 to 1 up the screen.
+  const glint = new THREE.Vector3(-1, 0.36, -1).normalize();
+  const sunSky = { y: 0.7, turn: 0 };
+  function placeSun(seedNum, t) {
+    const seed = (seedNum | 0) >>> 0;
+    const s = (t || 0) / 1000;
+    const turn = (hash(seed, 1) * 2 - 1) * SUN_TURN
+      + SUN_WANDER * Math.sin((s / SUN_PERIOD) * Math.PI * 2 + hash(seed, 2) * Math.PI * 2);
+    const high = THREE.MathUtils.clamp(
+      hash(seed, 3) * 0.85 + 0.15 * Math.sin((s / (SUN_PERIOD * 1.4)) * Math.PI * 2 + hash(seed, 4) * Math.PI * 2),
+      0, 1
+    );
+    sunSky.turn = turn;
+    sunSky.y = 0.78 + 0.14 * high;
+    glint.copy(GLINT_BASE).applyAxisAngle(UP, turn);
+    glint.y = Math.tan(0.2 + 0.25 * high);
+    glint.normalize();
+    SUN_FROM.copy(SUN_FROM_BASE).applyAxisAngle(UP, turn);
+    sunRight.crossVectors(SUN_FROM, UP).normalize();
+    sunUp.crossVectors(sunRight, SUN_FROM).normalize();
+  }
+  placeSun(0, 0);
   const shadowAt = new THREE.Vector3();
   const shadowed = (o) => { o.castShadow = true; o.receiveShadow = true; };
 
@@ -644,6 +709,8 @@ export function createScene(canvas, { quality = "high" } = {}) {
     uHorizon: { value: new THREE.Color() },
     uBottom: { value: new THREE.Color() },
     uGlow: { value: 0.3 },
+    uSun: { value: new THREE.Vector2(0.5, 0.7) },
+    uSunDisc: { value: 1 },
     uAspect: { value: 1 },
     uTime: { value: 0 },
     uPan: { value: 0 },
@@ -708,7 +775,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     uHorizon: { value: new THREE.Color() },
     uTop: { value: new THREE.Color() },
     uFoam: { value: new THREE.Color() },
-    uSun: { value: GLINT },
+    uSun: { value: glint },
     uGlint: { value: 1 },
     uNear: { value: 14 },
     uFar: { value: 70 },
@@ -736,6 +803,21 @@ export function createScene(canvas, { quality = "high" } = {}) {
   water.receiveShadow = true;
   water.renderOrder = 2;
   scene.add(water);
+
+  const sunDisc = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.ShaderMaterial({
+      uniforms: { uSun: skyUniforms.uSun, uSunDisc: skyUniforms.uSunDisc, uAspect: skyUniforms.uAspect },
+      vertexShader: SUN_VERTEX,
+      fragmentShader: SUN_FRAGMENT,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  sunDisc.frustumCulled = false;
+  sunDisc.renderOrder = 2.5;
+  scene.add(sunDisc);
 
   /* ---- the island and the base ---- */
   const island = new THREE.Group();
@@ -1068,6 +1150,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
       waterUniforms.uFoam.value.setHSL(0.55, 0.2, 0.5);
       waterUniforms.uGlint.value = 0.35;
       skyUniforms.uGlow.value = 0.08;
+      skyUniforms.uSunDisc.value = 0.3;
       hemi.intensity = 1.0;
       sun.intensity = 1.2;
       skyUniforms.uStars.value = 0.9;
@@ -1088,6 +1171,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
       waterUniforms.uFoam.value.setRGB(1, 1, 1).lerp(look.horizon, 0.12);
       waterUniforms.uGlint.value = 1;
       skyUniforms.uGlow.value = 0.35;
+      skyUniforms.uSunDisc.value = 1;
       hemi.intensity = 1.5;
       sun.intensity = 1.7;
       skyUniforms.uStars.value = 0.6;
@@ -1112,6 +1196,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
     const storm = stormy();
     skyUniforms.uOvercast.value = Math.max(wet, 0.8 * r);
     skyUniforms.uGlow.value *= 1 - 0.85 * r;
+    skyUniforms.uSunDisc.value *= 1 - Math.min(1, 1.2 * r);
     skyUniforms.uStars.value *= dry;
     skyUniforms.uMeteors.value *= dry;
     skyUniforms.uCumulus.value = Math.min(1, skyUniforms.uCumulus.value + 0.15 * r);
@@ -1320,6 +1405,7 @@ export function createScene(canvas, { quality = "high" } = {}) {
 
     syncTower(layers, count, seedNum);
     growLayers(view.growing ?? [], layers, count, seedNum, t);
+    placeSun(seedNum, t);
 
     const top = (count - 1) * LAYER * S;
     const weather = view.weather;
@@ -1560,12 +1646,23 @@ export function createScene(canvas, { quality = "high" } = {}) {
     skyUniforms.uTime.value = clock;
     skyUniforms.uPixel.value = renderer.getPixelRatio();
     skyUniforms.uAspect.value = camera.aspect;
+
+    // The sun in the flat sky: across by how far round from the camera's
+    // heading it is, a view's width a screen across as the clouds pan; up
+    // by its own height. Behind the camera, no rays and no flare.
+    camera.getWorldDirection(sunHeading);
+    sunHeading.y = 0;
+    sunHeading.normalize();
+    sunSide.crossVectors(sunHeading, UP);
+    const off = Math.atan2(glint.x * sunSide.x + glint.z * sunSide.z, glint.x * sunHeading.x + glint.z * sunHeading.z);
+    skyUniforms.uSun.value.set(0.5 + off / across, sunSky.y);
+    const facing = THREE.MathUtils.smoothstep(Math.cos(off), 0, 0.6);
     const paint = () => {
       renderer.clear();
       renderer.render(back, backCamera);
       renderer.render(scene, camera);
     };
-    if (post) post.render(paint, { camera, sun: GLINT, rays: raysLevel, time: clock, flash });
+    if (post) post.render(paint, { camera, sun: skyUniforms.uSun.value, facing, rays: raysLevel, flare: skyUniforms.uSunDisc.value, time: clock, flash });
     else paint();
   }
 
